@@ -30,40 +30,44 @@ function omgeving(job: Job): string | undefined {
 
 const uitrollen = lees("uitrollen.yml");
 
+function job(naam: string): Job {
+  const gevonden = uitrollen.jobs[naam];
+  if (!gevonden) throw new Error(`job ${naam} ontbreekt in uitrollen.yml`);
+  return gevonden;
+}
+
 describe("uitrollen.yml", () => {
   it("rolt productie alleen uit bij een push op main, in omgeving production", () => {
-    const job = uitrollen.jobs.productie;
-    expect(job.if).toContain("github.event_name == 'push'");
-    expect(omgeving(job)).toBe("production");
+    const productie = job("productie");
+    expect(productie.if).toContain("github.event_name == 'push'");
+    expect(omgeving(productie)).toBe("production");
     expect(uitrollen.on.push).toEqual({ branches: ["main"] });
   });
 
   it("zet een preview per PR met een vaste alias, in omgeving preview", () => {
-    const job = uitrollen.jobs.preview;
-    expect(job.if).toContain("github.event_name == 'pull_request'");
-    expect(omgeving(job)).toBe("preview");
-    const upload = job.steps.find((s) => s.run?.includes("versions upload"));
+    const preview = job("preview");
+    expect(preview.if).toContain("github.event_name == 'pull_request'");
+    expect(omgeving(preview)).toBe("preview");
+    const upload = preview.steps.find((s) => s.run?.includes("versions upload"));
     // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub-expressie, geen JS-template
     expect(upload?.run).toContain("--preview-alias pr-${{ github.event.pull_request.number }}");
   });
 
   it("bouwt de preview met de testbalk aan", () => {
-    const bouw = uitrollen.jobs.preview.steps.find((s) => s.run?.includes("pnpm build"));
+    const bouw = job("preview").steps.find((s) => s.run?.includes("pnpm build"));
     expect(bouw?.env?.VITE_OMGEVING).toBe("test");
   });
 
   it("rolt productie niet uit zolang de database nog niet is ingericht", () => {
-    const controle = uitrollen.jobs.productie.steps.find((s) =>
-      s.run?.includes("VITE_SUPABASE_URL"),
-    );
+    const controle = job("productie").steps.find((s) => s.run?.includes("VITE_SUPABASE_URL"));
     expect(controle?.run).toContain("skip=true");
-    const deploy = uitrollen.jobs.productie.steps.find((s) => s.run?.includes("wrangler deploy"));
+    const deploy = job("productie").steps.find((s) => s.run?.includes("wrangler deploy"));
     expect(deploy?.if).toContain("skip != 'true'");
   });
 
   it("slaat over met een melding als de uitrolsleutel ontbreekt", () => {
-    for (const job of [uitrollen.jobs.productie, uitrollen.jobs.preview]) {
-      const controle = job.steps.find((s) => s.run?.includes("CLOUDFLARE_API_TOKEN"));
+    for (const j of [job("productie"), job("preview")]) {
+      const controle = j.steps.find((s) => s.run?.includes("CLOUDFLARE_API_TOKEN"));
       expect(controle?.run).toContain("::notice::");
     }
   });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INLOGDIENSTEN } from "@/features/auth/inlogdienst";
 
 /**
  * Omgevingsvariabelen worden hier één keer gevalideerd, bij het opstarten van de app.
@@ -8,7 +9,17 @@ import { z } from "zod";
  * Alles met de prefix VITE_ zit in de gedownloade bundel en is dus publiek.
  * Zet hier nooit een geheime sleutel neer; zie docs/WERKWIJZE.md.
  */
-const envSchema = z
+/**
+ * Een lege variabele betekent hetzelfde als een afwezige. GitHub Actions geeft een
+ * niet-ingestelde `${{ vars.X }}` door als lege tekst, en een lege regel in .env.local
+ * doet hetzelfde; zonder deze stap zou de app daarop crashen.
+ */
+function leegIsAfwezig(waarden: unknown): unknown {
+  if (typeof waarden !== "object" || waarden === null) return waarden;
+  return Object.fromEntries(Object.entries(waarden).filter(([, waarde]) => waarde !== ""));
+}
+
+const velden = z
   .object({
     /**
      * De twee Supabase-waarden horen bij elkaar: allebei aanwezig (een app met een
@@ -31,6 +42,12 @@ const envSchema = z
      * op je eigen computer. In productie ontbreekt hij, en dan is er geen balk.
      */
     VITE_OMGEVING: z.enum(["test"]).optional(),
+    /**
+     * Hoe gebruikers inloggen; zie src/features/auth/inlogdienst.ts. Standaard
+     * `wachtwoord`, zodat lokaal en in CI alles werkt zoals altijd. In productie zet de
+     * uitrol hem op `cloudflare`.
+     */
+    VITE_INLOGDIENST: z.enum(INLOGDIENSTEN).default("wachtwoord"),
   })
   .superRefine((waarden, ctx) => {
     const url = Boolean(waarden.VITE_SUPABASE_URL);
@@ -42,6 +59,8 @@ const envSchema = z
       });
     }
   });
+
+export const envSchema = z.preprocess(leegIsAfwezig, velden);
 
 const parsed = envSchema.safeParse(import.meta.env);
 

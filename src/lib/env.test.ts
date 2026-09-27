@@ -22,3 +22,41 @@ describe("heeftDatabase", () => {
     expect(heeftDatabase).toBe(true);
   });
 });
+
+describe("VITE_INLOGDIENST", () => {
+  it("is standaard wachtwoord, zodat lokaal en CI werken zoals altijd", () => {
+    expect(env.VITE_INLOGDIENST).toBe("wachtwoord");
+  });
+
+  it("weigert een onbekende inlogdienst met een duidelijke melding", async () => {
+    const { envSchema } = await import("./env");
+    const uitkomst = envSchema.safeParse({ VITE_INLOGDIENST: "okta" });
+    expect(uitkomst.success).toBe(false);
+  });
+
+  it("kent de vijf diensten", async () => {
+    const { envSchema } = await import("./env");
+    for (const dienst of ["cloudflare", "azure", "google", "mailcode", "wachtwoord"]) {
+      expect(envSchema.safeParse({ VITE_INLOGDIENST: dienst }).success).toBe(true);
+    }
+  });
+});
+
+describe("lege waarden", () => {
+  it("behandelt een lege variabele als niet gezet, zoals GitHub Actions die doorgeeft", async () => {
+    // `${{ vars.X }}` wordt een lege tekst als X niet bestaat. Dat mag de app niet
+    // laten crashen: leeg betekent hetzelfde als afwezig.
+    const { envSchema } = await import("./env");
+    const uitkomst = envSchema.safeParse({
+      VITE_SUPABASE_URL: "",
+      VITE_SUPABASE_ANON_KEY: "",
+      VITE_SUPABASE_SCHEMA: "",
+      VITE_OMGEVING: "",
+      VITE_INLOGDIENST: "",
+    });
+    expect(uitkomst.success).toBe(true);
+    expect(uitkomst.data?.VITE_SUPABASE_SCHEMA).toBe("public");
+    expect(uitkomst.data?.VITE_INLOGDIENST).toBe("wachtwoord");
+    expect(uitkomst.data?.VITE_OMGEVING).toBeUndefined();
+  });
+});

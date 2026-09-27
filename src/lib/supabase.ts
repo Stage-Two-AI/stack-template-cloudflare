@@ -36,7 +36,13 @@ const SCHEMA = env.VITE_SUPABASE_SCHEMA as SchemaName;
 export const supabase = createClient<Database>(
   env.VITE_SUPABASE_URL as string,
   env.VITE_SUPABASE_ANON_KEY as string,
-  { db: { schema: SCHEMA } },
+  {
+    db: { schema: SCHEMA },
+    // PKCE: na inloggen bij een externe dienst komt er een eenmalige code terug in het
+    // adres, geen token. Een token in een adres kan in logboeken of verkeerde handen
+    // belanden; de code is zonder de geheime helft in deze browser waardeloos.
+    auth: { flowType: "pkce" },
+  },
 );
 
 export type Item = Database["public"]["Tables"]["items"]["Row"];

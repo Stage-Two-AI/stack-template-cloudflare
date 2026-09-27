@@ -1,11 +1,160 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { type Inlogdienst, inlogVorm, startInloggen } from "@/features/auth/inlogdienst";
+import { env } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
 import { credentialsSchema, fieldErrors } from "@/lib/validation";
 
-export function LoginPage() {
+const KNOPTEKST: Record<"azure" | "google", string> = {
+  azure: "Inloggen met Microsoft",
+  google: "Inloggen met Google",
+};
+
+/** Waar de inlogdienst de gebruiker naar terugstuurt: de startpagina van deze app. */
+function terugNaar(): string {
+  return `${window.location.origin}/`;
+}
+
+/**
+ * Kwam Supabase terug met een fout (bijvoorbeeld: geen toegang)? Dan staat die in het
+ * adres. In dat geval sturen we niet opnieuw door, anders ontstaat een eindeloze lus.
+ */
+function foutUitAdres(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const fout = params.get("error_description") ?? hash.get("error_description");
+  if (fout) return fout;
+  return params.get("error") ?? hash.get("error");
+}
+
+export function LoginPage({ dienst = env.VITE_INLOGDIENST }: { dienst?: Inlogdienst }) {
+  const vorm = inlogVorm(dienst);
+  if (vorm === "wachtwoord") return <WachtwoordFormulier />;
+  if (vorm === "mailcode") return <MailcodeFormulier />;
+  return <ExterneInlog dienst={dienst} automatisch={vorm === "doorsturen"} />;
+}
+
+function Pagina({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
+      <h1 className="text-2xl font-semibold">Inloggen</h1>
+      {children}
+    </main>
+  );
+}
+
+function ExterneInlog({ dienst, automatisch }: { dienst: Inlogdienst; automatisch: boolean }) {
+  const [fout, setFout] = useState<string | null>(() => foutUitAdres());
+  const [bezig, setBezig] = useState(false);
+  const gestart = useRef(false);
+
+  const inloggen = useCallback(async () => {
+    setFout(null);
+    setBezig(true);
+    try {
+      await startInloggen(dienst, supabase.auth, { terugNaar: terugNaar() });
+    } catch {
+      setFout("Inloggen is niet gelukt. Probeer het opnieuw of vraag je beheerder om toegang.");
+      setBezig(false);
+    }
+  }, [dienst]);
+
+  useEffect(() => {
+    // Eén keer automatisch doorsturen, en alleen als er geen fout terugkwam.
+    if (!automatisch || gestart.current || foutUitAdres()) return;
+    gestart.current = true;
+    void inloggen();
+  }, [automatisch, inloggen]);
+
+  if (fout) {
+    return (
+      <Pagina>
+        <p role="alert" className="text-sm text-destructive">
+          {fout}
+        </p>
+        <Button onClick={() => void inloggen()}>Opnieuw proberen</Button>
+      </Pagina>
+    );
+  }
+
+  if (automatisch) {
+    return (
+      <Pagina>
+        <p role="status" className="text-sm text-muted-foreground">
+          Je wordt doorgestuurd om in te loggen…
+        </p>
+      </Pagina>
+    );
+  }
+
+  return (
+    <Pagina>
+      <Button onClick={() => void inloggen()} disabled={bezig}>
+        {bezig ? "Bezig…" : KNOPTEKST[dienst as "azure" | "google"]}
+      </Button>
+    </Pagina>
+  );
+}
+
+function MailcodeFormulier() {
+  const [email, setEmail] = useState("");
+  const [fout, setFout] = useState<string | null>(null);
+  const [verstuurd, setVerstuurd] = useState(false);
+  const [bezig, setBezig] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFout(null);
+    setBezig(true);
+    try {
+      await startInloggen("mailcode", supabase.auth, { terugNaar: terugNaar(), email });
+      setVerstuurd(true);
+    } catch {
+      setFout("Er ging iets mis bij het versturen. Controleer je e-mailadres.");
+    }
+    setBezig(false);
+  }
+
+  if (verstuurd) {
+    return (
+      <Pagina>
+        <p role="status" className="text-sm">
+          Kijk in je mail: daar staat een link om in te loggen.
+        </p>
+      </Pagina>
+    );
+  }
+
+  return (
+    <Pagina>
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="email">E-mailadres</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </div>
+        {fout ? (
+          <p role="alert" className="text-sm text-destructive">
+            {fout}
+          </p>
+        ) : null}
+        <Button type="submit" disabled={bezig}>
+          {bezig ? "Bezig…" : "Stuur inloglink"}
+        </Button>
+      </form>
+    </Pagina>
+  );
+}
+
+function WachtwoordFormulier() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -32,8 +181,7 @@ export function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
-      <h1 className="text-2xl font-semibold">Inloggen</h1>
+    <Pagina>
       <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
         <div className="flex flex-col gap-2">
           <Label htmlFor="email">E-mailadres</Label>
@@ -71,6 +219,6 @@ export function LoginPage() {
           {busy ? "Bezig…" : "Inloggen"}
         </Button>
       </form>
-    </main>
+    </Pagina>
   );
 }
