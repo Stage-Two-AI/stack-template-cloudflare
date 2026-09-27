@@ -5,6 +5,7 @@
 > inloggen en toegang geregeld worden. Waarom en hoe staat in het plan
 > `docs/plans/2026-09-27-1712-feat-cloudflare-stack-proef-plan.md` in `Stage-Two-AI/Stack`.
 > Gebruik deze variant nog niet voor klanten.
+> Stand van de proef, het draaiboek en de uitkomst: `docs/proef/doorsteek.md`.
 
 <!-- Vervang <projectnaam> en schrijf hieronder in één zin wat deze app doet,
      in gewone taal, vanuit de gebruiker. -->
