@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "stagetwo": {
+      "source": {
+        "source": "github",
+        "repo": "Stage-Two-AI/stack-plugin"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "stack@stagetwo": true
+  }
+}
