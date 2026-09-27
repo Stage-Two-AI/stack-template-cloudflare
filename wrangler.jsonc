@@ -1,0 +1,18 @@
+// Hoe deze app op Cloudflare draait. `name` en het eigen domein zijn van dit project;
+// de andere regels gelden voor elke app in de stack en worden gecontroleerd door
+// scripts/lib/cloudflare-config.mjs (zie de test in tests/unit/cloudflare-config.test.ts).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-proef",
+  "compatibility_date": "2026-09-01",
+  // Alleen de gebouwde bestanden; een onbekend pad valt terug op index.html.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  // Geen *.workers.dev-adres naast het eigen domein.
+  "workers_dev": false,
+  // Previews per pull request. Access op de Worker zelf dekt ook deze adressen.
+  "preview_urls": true,
+  "routes": [{ "pattern": "cf-proef.stagetwo.nl", "custom_domain": true }]
+}

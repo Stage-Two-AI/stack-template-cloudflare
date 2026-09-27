@@ -66,7 +66,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Eerst de testdatabase (canary), als die er is. Dat is hetzelfde project als
-      # waar de Vercel-preview naar wijst. Falen de migraties daar, dan stopt de job
+      # waar de Cloudflare-preview naar wijst. Falen de migraties daar, dan stopt de job
       # hier en blijft productie onaangeroerd. Bijkomend voordeel: de preview van de
       # volgende PR draait op het schema dat productie ook heeft.
       - name: Is er een testdatabase om eerst op te proberen?
@@ -122,7 +122,7 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: pnpm exec supabase db push --include-all
 
-# Let op de volgorde in de tijd: Vercel begint aan zijn eigen deploy zodra er naar
+# Let op de volgorde in de tijd: de workflow `uitrollen` begint aan zijn eigen deploy zodra er naar
 # main gemerged wordt, dus heel even kan nieuwe code op het oude schema draaien.
 # Daarom is de regel: migraties zijn aanvullend. Voeg een kolom toe in de ene PR en
 # ga hem pas gebruiken in de volgende, en gooi een kolom pas weg als niets hem meer

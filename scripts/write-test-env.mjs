@@ -4,7 +4,7 @@ import { databaseModus, testDatabase } from "./lib/stack-config.mjs";
 
 /**
  * Schrijft .env.local zodat de app op je eigen computer met de TESTDATABASE praat:
- * hetzelfde Supabase-project als waar de Vercel-preview naar wijst, los van productie.
+ * hetzelfde Supabase-project als waar de Cloudflare-preview naar wijst, los van productie.
  * Dit is variant B uit docs/routes/lokaal-kijken.md; variant A (`pnpm env:local`)
  * gebruikt een lokale Supabase in Docker.
  *

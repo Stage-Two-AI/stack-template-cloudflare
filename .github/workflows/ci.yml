@@ -144,14 +144,14 @@ jobs:
 
       # Een app met een gedeelde database heeft geen omgeving om tegen te testen die
       # in de CI mag draaien: haar gegevens staan in het project van een andere app.
-      # De browsertest draait daar via de Vercel-preview van de PR.
+      # De browsertest draait daar via de Cloudflare-preview van de PR.
       - name: End-to-end test
         if: steps.stack.outputs.modus != 'gedeeld'
         run: pnpm test:e2e
 
       - name: End-to-end test overgeslagen
         if: steps.stack.outputs.modus == 'gedeeld'
-        run: echo "::notice::Deze app gebruikt de database van een andere app. Loop de Vercel-preview van deze PR na in plaats van te vertrouwen op een browsertest in CI."
+        run: echo "::notice::Deze app gebruikt de database van een andere app. Loop de Cloudflare-preview van deze PR na in plaats van te vertrouwen op een browsertest in CI."
 
       - name: Rapport bewaren als er iets faalde
         if: failure()

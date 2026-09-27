@@ -27,7 +27,7 @@ const envSchema = z
     VITE_SUPABASE_SCHEMA: z.enum(["public", "api"]).default("public"),
     /**
      * Staat deze versie van de app op de testdatabase? Dan `test`, en de app laat dat
-     * zien met een balk bovenin. Vercel zet dit op de Preview-omgeving, `pnpm env:test`
+     * zien met een balk bovenin. De uitrol zet dit op de preview, `pnpm env:test`
      * op je eigen computer. In productie ontbreekt hij, en dan is er geen balk.
      */
     VITE_OMGEVING: z.enum(["test"]).optional(),

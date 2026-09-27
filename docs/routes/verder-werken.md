@@ -76,9 +76,9 @@ git push -u origin <branch>
 gh pr create
 ```
 
-Vul het PR-formulier volledig in. De regel `Vercel-preview:` is niet optioneel: die
-link is de enige geldige manier om werk te laten zien. Wacht tot Vercel klaar is,
-plak de link erin en **klik hem zelf één keer aan** voordat je iemand vraagt te kijken.
+Vul het PR-formulier volledig in. De regel `Cloudflare-preview:` is niet optioneel: die
+link is de enige geldige manier om werk te laten zien. Wacht tot de workflow `uitrollen`
+de link als reactie in de PR heeft gezet, plak hem erin en **klik hem zelf één keer aan** voordat je iemand vraagt te kijken.
 
 Zet nooit een dev-server op localhost op om iets te tonen. Die kan de klant niet
 openen en hij bewijst niet dat de gebouwde versie werkt. Lokaal kijken voor jezelf
@@ -90,7 +90,7 @@ Een taak is klaar als, en alleen als:
 
 1. de pull request open staat,
 2. **alle** checks groen zijn, en
-3. de Vercel-preview-link in de beschrijving staat en werkt.
+3. de Cloudflare-preview-link in de beschrijving staat en werkt.
 
 Niet eerder. Meld niet "het is af" bij een rode check of een ontbrekende preview;
 meld dan wat er nog mist.

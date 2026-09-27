@@ -31,7 +31,7 @@ De uitgangspunten waar alles uit volgt:
 | Validatie | Zod | controleert gegevens van buiten vóór gebruik |
 | Tests | Vitest + Playwright | het vangnet |
 | Fouten in productie | Sentry | anders hoor je het van je klant |
-| Hosting | Vercel | een preview per pull request, productie op `main` |
+| Hosting en toegang | Cloudflare | een preview per pull request achter de login, productie op `main`; Cloudflare is ook het enige punt waar inloggen en toegang geregeld worden |
 
 Waarom een browser-app en geen app met een eigen server: het typische project is een
 intern werktuig achter een login. Geen Google nodig, maar wél de printer, de camera
@@ -58,7 +58,7 @@ in het bestand dat de bezoeker downloadt.
 - Wél in de app: de Supabase **anon key**. Die is expres publiek en wordt door RLS
   beschermd.
 - **Nooit** in de app: de **service role key**, API-sleutels van derden, wachtwoorden.
-  Die horen in een Edge Function of als server-side variabele in Vercel.
+  Die horen in een Supabase Edge Function.
 - `.env` staat nooit in git. `.env.example` wel, met lege waarden en per variabele een
   regel uitleg.
 
@@ -111,17 +111,17 @@ Mis je iets in het contract, dan is dat een wijziging aan het contract: een aanv
 eigenaar van die database, geen migratie hier.
 
 In de code is de koppeling één omgevingsvariabele: `VITE_SUPABASE_SCHEMA=api` (in
-`.env.local` en in Vercel). `src/lib/supabase.ts` leest die en praat dan met het schema
+`.env.local` en in de GitHub-omgevingen van de uitrol). `src/lib/supabase.ts` leest die en praat dan met het schema
 `api` in plaats van `public`; `pnpm env:local` doet bij deze stand niets, want er draait
 geen lokale database. De waarden van de eigenaar zet je één keer met de hand in `.env.local`.
 
 (In `stack-template` zelf staat hij bewust op `true`: die repo moet zijn eigen databaselaag
 blijven testen, anders verrot het onderdeel dat jij straks aanzet.)
 
-Dat is geen zuinigheid om de zuinigheid. Vercel rekent een vaste platformprijs ongeacht
-het aantal projecten, maar Supabase rekent per project: het plan per organisatie plus
+Dat is geen zuinigheid om de zuinigheid. Cloudflare rekent voor het uitserveren van
+statische bestanden vrijwel niets, ongeacht het aantal apps, maar Supabase rekent per project: het plan per organisatie plus
 compute per project. Twintig apps met elk een eigen database is dus een veelvoud van
-twintig apps op Vercel. Een database die je niet nodig hebt, is de duurste regel code
+twintig apps zonder. Een database die je niet nodig hebt, is de duurste regel code
 die je nooit hebt geschreven.
 
 **Zet `database` op `true` zodra één van deze waar is:**
@@ -137,11 +137,11 @@ die je nooit hebt geschreven.
 **Blijf op `false` als het hierbij blijft:**
 
 - inhoud die in de repo kan staan: teksten, een portfolio, een productenlijst die jij beheert
-- **bestanden** zonder onderlinge relaties: foto's, audio, uploads. Die horen in Vercel Blob,
-  ook als het er veel zijn
+- **bestanden** zonder onderlinge relaties: foto's, audio, uploads. Die horen in Supabase Storage,
+  en dat vraagt dus wel een database
 - een beetje **staat** die af en toe wordt bijgewerkt: een wachtrij, een cache, een teller.
   Ook Blob
-- **terugkerende taken**: dat is Vercel Cron, geen reden voor een database
+- **terugkerende taken**: die draaien met `pg_cron` in Supabase, dus ook die vragen een database
 
 Merk je dat je in Blob een database aan het namaken bent, met verwijzingen tussen bestanden
 of met zoeken over inhoud, dan is dat het signaal om om te schakelen. Niet doormodderen.
@@ -168,8 +168,8 @@ eigenaar.
 
 Wat erop draait:
 
-- **De Vercel-preview van elke pull request.** Klikken, opslaan, verwijderen in een preview
-  raakt nooit echte gegevens. Vercel krijgt op de Preview-omgeving de URL en de anon key van
+- **De Cloudflare-preview van elke pull request.** Klikken, opslaan, verwijderen in een preview
+  raakt nooit echte gegevens. De preview krijgt uit de GitHub-omgeving `preview` de URL en de anon key van
   het testproject, en `VITE_OMGEVING=test`; de app laat dan een balk zien dat dit de
   testomgeving is. Productie op `main` krijgt het productieproject en geen balk.
 - **Lokaal kijken op je eigen computer**, zonder Docker: `pnpm env:test` (route
@@ -188,7 +188,7 @@ Actions-secret `SUPABASE_TEST_DB_PASSWORD`:
 }
 ```
 
-Ontbreekt het blok, dan is er geen testdatabase: de preview gebruikt wat er in Vercel
+Ontbreekt het blok, dan is er geen testdatabase: de preview gebruikt wat er in de GitHub-omgeving `preview`
 staat ingesteld en migraties gaan rechtstreeks naar productie. Dat is toegestaan, maar het
 is de uitzondering en niet de standaard. Wat de testdatabase kost: een tweede project bij
 Supabase, dat je kunt pauzeren als er een tijd niet gebouwd wordt.
@@ -203,7 +203,7 @@ Supabase-console**. Dat werkt via migraties plus een deploy-stap.
    RLS-check, destructie-check.
 3. Mergen naar `main`.
 4. Actions past de migratie toe: eerst op de testdatabase (als die er is), dan op productie.
-5. Vercel zet de nieuwe versie neer.
+5. GitHub Actions zet de nieuwe versie op Cloudflare neer.
 
 Regels die hierbij horen en niet vrijblijvend zijn:
 
@@ -258,7 +258,7 @@ fouten in plaats van met bedachte scenario's.
    - staan er nieuwe pakketten in `package.json`?
    - raakt het aan inloggen, betalingen, omgevingsvariabelen of migraties?
    - staat er een sleutel of wachtwoord hardgecodeerd in?
-4. **Klik de Vercel-preview aan.** Kijken gaat boven hopen. Een preview-URL van de PR
+4. **Klik de Cloudflare-preview aan.** Kijken gaat boven hopen. Een preview-URL van de PR
    is de enige geldige manier om werk te laten zien, nooit een dev-server op localhost.
 5. **Deployen = mergen.** Nooit met de hand op een server of in een console ingrijpen.
 6. **Conventional Commits** (`feat:`, `fix:`, `chore:`).
@@ -278,7 +278,7 @@ fouten in plaats van met bedachte scenario's.
 | Branch aanmaken en PR openen | ja | **ja** |
 | Eigen PR mergen | ja | **ja**, zodra alle checks groen zijn |
 | Supabase-console | ja | niet nodig, zie hoofdstuk 3 |
-| Vercel-console | ja | niet nodig, deployen is mergen |
+| Cloudflare-console | ja | niet nodig, deployen is mergen en toegang staat in de beheer-repo |
 | Sentry | ja | ja, meelezen |
 
 **De merge-knop is de enige knop die je nodig hebt.** Je kunt met je eigen
@@ -296,7 +296,7 @@ wijziging aan de poort zelf ook, en Stage Two krijgt een melding bij
 een wijziging aan de database, aan het inloggen of aan de poort zelf (zie
 `.github/CODEOWNERS`, dat blokkeert niets maar informeert wel).
 
-Alle accounts (GitHub, Vercel, Supabase, Sentry) staan op naam van de klant, met
+Alle accounts (GitHub, Cloudflare, Supabase, Sentry) staan op naam van de klant, met
 Stage Two als lid met adminrechten. Bij oplevering hoeft er dus niets overgedragen te
 worden: de toegang van Stage Two wordt verwijderd en de rest blijft staan.
 
@@ -343,7 +343,7 @@ De namen zitten op verschillende verdiepingen; het zijn geen concurrenten van el
 | **TypeScript** | de taal: JavaScript met labels erbij ("dit veld is een datum") zodat fouten opvallen vóór het live gaat |
 | **React** | het systeem van herbruikbare bouwblokken waarmee je de interface samenstelt. Geen taal |
 | **Vite** | het bouwgereedschap: maakt van je bronbestanden iets dat een browser kan laden |
-| **Vercel** | het platform waar het eindresultaat gehost wordt |
+| **Cloudflare** | het platform waar het eindresultaat gehost wordt, en de deur ervoor: wie niet mag inloggen ziet de app niet |
 | **Supabase** | database (Postgres) + inloggen + bestandsopslag als dienst |
 | **RLS** | regels in de database die per gebruiker bepalen welke rijen hij mag zien. In een browser-app is dit je hele beveiliging |
 | **Edge Function** | klein stukje code dat bij Supabase op een server draait, voor dingen met een geheime sleutel |

@@ -37,6 +37,7 @@
       "scripts/lib/changed-files.mjs",
       "scripts/lib/stack-config.mjs",
       "scripts/lib/db-types.mjs",
+      "scripts/lib/cloudflare-config.mjs",
       "scripts/guard-tests.mjs",
       "scripts/guard-migrations.mjs",
       "scripts/guard-rls.mjs",
@@ -77,6 +78,8 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.rls.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "wrangler.jsonc",
+    "pnpm-workspace.yaml"
   ]
 }
