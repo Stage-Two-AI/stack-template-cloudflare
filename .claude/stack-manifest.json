@@ -22,6 +22,7 @@
   ],
   "manifestFormaat": 1,
   "stackVersion": 11,
+  "variant": "cloudflare",
   "vanDeTemplate": {
     "vervangen": [
       ".claude/hooks/guard.mjs",

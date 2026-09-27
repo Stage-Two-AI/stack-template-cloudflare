@@ -1,5 +1,11 @@
 # <projectnaam>
 
+> **Cloudflare-proefvariant.** Deze template is een proef naast `Stage-Two-AI/stack-template`:
+> de app draait op Cloudflare in plaats van Vercel, en Cloudflare is het enige punt waar
+> inloggen en toegang geregeld worden. Waarom en hoe staat in het plan
+> `docs/plans/2026-09-27-1712-feat-cloudflare-stack-proef-plan.md` in `Stage-Two-AI/Stack`.
+> Gebruik deze variant nog niet voor klanten.
+
 <!-- Vervang <projectnaam> en schrijf hieronder in één zin wat deze app doet,
      in gewone taal, vanuit de gebruiker. -->
 

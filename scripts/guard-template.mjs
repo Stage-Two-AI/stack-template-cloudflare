@@ -37,8 +37,8 @@ function git(args) {
   return execFileSync("git", args, { encoding: "utf8" });
 }
 
-// In de template zelf, en in de spiegel daarvan bij een klant, is elke wijziging aan
-// deze bestanden juist de bedoeling.
+// In de template zelf, in de Cloudflare-variant ervan, en in de spiegel daarvan bij
+// een klant, is elke wijziging aan deze bestanden juist de bedoeling.
 const repo =
   process.env.GITHUB_REPOSITORY ??
   (() => {
@@ -48,7 +48,7 @@ const repo =
       return "";
     }
   })();
-if (/\/stack-template(?:\.git)?$/.test(repo)) skip("dit is de template zelf");
+if (/\/stack-template(?:-cloudflare)?(?:\.git)?$/.test(repo)) skip("dit is de template zelf");
 
 let manifest;
 try {
