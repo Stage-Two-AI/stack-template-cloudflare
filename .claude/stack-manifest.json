@@ -32,6 +32,7 @@
       "CLAUDE.md",
       ".github/workflows/ci.yml",
       ".github/workflows/deploy-db.yml",
+      ".github/workflows/uitrollen.yml",
       ".github/pull_request_template.md",
       ".github/dependabot.yml",
       "scripts/lib/changed-files.mjs",

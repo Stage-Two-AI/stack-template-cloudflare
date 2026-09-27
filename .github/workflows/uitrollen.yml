@@ -1,0 +1,153 @@
+name: Uitrollen
+
+# Productie bij een merge naar main; een preview per pull request, achter dezelfde
+# login als productie. Sleutels staan in GitHub-omgevingen:
+#   production  CLOUDFLARE_API_TOKEN (alleen uitrollen), vars VITE_*, CLOUDFLARE_ACCOUNT_ID
+#   preview     een eigen CLOUDFLARE_API_TOKEN (alleen uitrollen), vars VITE_* van de test
+# De omgeving production is beperkt tot main, zodat een PR-tak die sleutel nooit ziet.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: uitrollen-${{ github.ref }}
+  # Een nieuwere preview mag een oudere afbreken; een productie-uitrol nooit.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  productie:
+    name: Productie
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Is alles ingericht?
+        id: check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+        run: |
+          node -e "import('./scripts/lib/cloudflare-config.mjs').then((m) => m.cloudflareConfig())"
+          modus=$(node -e "import('./scripts/lib/stack-config.mjs').then((m) => console.log(m.databaseModus()))")
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN ontbreekt in omgeving production. Uitrollen wordt overgeslagen."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif [ "$modus" != "geen" ] && [ -z "$VITE_SUPABASE_URL" ]; then
+            # Nooit live zonder database-instellingen: dan zou de app open staan voordat
+            # de inrichting (Access, inlogdienst) er is.
+            echo "::notice::VITE_SUPABASE_URL ontbreekt in omgeving production. De app is nog niet ingericht; uitrollen wordt overgeslagen."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.skip != 'true'
+        uses: pnpm/action-setup@v6
+
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - if: steps.check.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Bouwen
+        if: steps.check.outputs.skip != 'true'
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_SCHEMA: ${{ vars.VITE_SUPABASE_SCHEMA }}
+          VITE_INLOGDIENST: ${{ vars.VITE_INLOGDIENST }}
+        run: pnpm build
+
+      - name: Uitrollen naar Cloudflare
+        if: steps.check.outputs.skip != 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: pnpm exec wrangler deploy
+
+  preview:
+    name: Preview
+    # Alleen PR's uit deze repo: een fork krijgt geen sleutels en geen preview.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Is alles ingericht?
+        id: check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node -e "import('./scripts/lib/cloudflare-config.mjs').then((m) => m.cloudflareConfig())"
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN ontbreekt in omgeving preview. Er komt geen preview voor deze PR."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.skip != 'true'
+        uses: pnpm/action-setup@v6
+
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - if: steps.check.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Bouwen (testomgeving)
+        if: steps.check.outputs.skip != 'true'
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_SCHEMA: ${{ vars.VITE_SUPABASE_SCHEMA }}
+          VITE_INLOGDIENST: ${{ vars.VITE_INLOGDIENST }}
+          VITE_OMGEVING: test
+        run: pnpm build
+
+      - name: Preview uploaden
+        id: upload
+        if: steps.check.outputs.skip != 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.pull_request.number }} | tee upload.log
+          url=$(grep -oE 'https://pr-[0-9]+-[^ ]+\.workers\.dev' upload.log | head -n 1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Link in de PR zetten
+        if: steps.check.outputs.skip != 'true' && steps.upload.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.upload.outputs.url }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Eén reactie per PR, die bij elke push wordt bijgewerkt.
+          markering='<!-- cloudflare-preview -->'
+          tekst="$markering
+          Cloudflare-preview: $URL
+
+          Deze link staat achter dezelfde login als productie en toont de testbalk."
+          bestaand=$(gh api "repos/${{ github.repository }}/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$markering\")) | .id" | head -n 1)
+          if [ -n "$bestaand" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$bestaand" -f body="$tekst" > /dev/null
+          else
+            gh api -X POST "repos/${{ github.repository }}/issues/$PR/comments" -f body="$tekst" > /dev/null
+          fi

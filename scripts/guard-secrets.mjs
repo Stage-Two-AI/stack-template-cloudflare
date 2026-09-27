@@ -47,6 +47,12 @@ const PATTERNS = [
   { name: "GitHub token", re: /\b(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})/ },
   { name: "OpenAI/Anthropic-achtige key", re: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{24,}/ },
   { name: "service role key met waarde", re: /SERVICE_ROLE_KEY\s*[:=]\s*["']?\S{10,}/ },
+  // Een Cloudflare-API-sleutel heeft geen herkenbaar voorvoegsel; hij valt op aan de
+  // naam waaronder hij wordt toegekend. Een verwijzing als ${{ secrets.X }} is prima.
+  {
+    name: "Cloudflare-API-sleutel met waarde",
+    re: /CLOUDFLARE_[A-Z_]*TOKEN\s*[:=]\s*["']?[A-Za-z0-9_-]{30,}/,
+  },
 ];
 
 const SKIP_FILES = new Set(["pnpm-lock.yaml", "scripts/guard-secrets.mjs"]);
