@@ -18,6 +18,7 @@
     "test:watch": "vitest --config vitest.config.ts",
     "test:rls": "vitest run --config vitest.rls.config.ts",
     "test:e2e": "playwright test",
+    "beheer:test": "node --test \"beheer/**/*.test.mjs\"",
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm guard",
     "guard": "pnpm guard:tests && pnpm guard:migrations && pnpm guard:rls && pnpm guard:secrets && pnpm guard:escapes && pnpm guard:template",
     "guard:tests": "node scripts/guard-tests.mjs",

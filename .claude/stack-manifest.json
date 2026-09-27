@@ -18,7 +18,11 @@
     "in), maar de plugin-hook beschermt het wel: het bepaalt wie een melding krijgt.",
     "",
     "manifestFormaat zegt welke vorm dit bestand heeft; een oudere plugin stopt bij een",
-    "nieuwer formaat in plaats van half werk te doen."
+    "nieuwer formaat in plaats van half werk te doen.",
+    "",
+    "nietMeenemen: paden die alleen voor de Cloudflare-proef in deze repo staan (de",
+    "inrichting in beheer/ en de proef-workflows met de brede beheersleutels). Die gaan",
+    "nooit mee naar een afgeleide app; in U9 verhuizen ze naar stack-beheer."
   ],
   "manifestFormaat": 1,
   "stackVersion": 11,
@@ -82,5 +86,6 @@
     "playwright.config.ts",
     "wrangler.jsonc",
     "pnpm-workspace.yaml"
-  ]
+  ],
+  "nietMeenemen": ["beheer/**", ".github/workflows/proef-*.yml"]
 }
