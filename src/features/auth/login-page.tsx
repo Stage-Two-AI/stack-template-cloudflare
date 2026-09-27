@@ -7,7 +7,7 @@ import { env } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
 import { credentialsSchema, fieldErrors } from "@/lib/validation";
 
-const KNOPTEKST: Record<"azure" | "google", string> = {
+const KNOPTEKST: Partial<Record<Inlogdienst, string>> = {
   azure: "Inloggen met Microsoft",
   google: "Inloggen met Google",
 };
@@ -92,7 +92,7 @@ function ExterneInlog({ dienst, automatisch }: { dienst: Inlogdienst; automatisc
   return (
     <Pagina>
       <Button onClick={() => void inloggen()} disabled={bezig}>
-        {bezig ? "Bezig…" : KNOPTEKST[dienst as "azure" | "google"]}
+        {bezig ? "Bezig…" : (KNOPTEKST[dienst] ?? "Inloggen")}
       </Button>
     </Pagina>
   );
@@ -107,9 +107,17 @@ function MailcodeFormulier() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFout(null);
+    const adres = credentialsSchema.shape.email.safeParse(email);
+    if (!adres.success) {
+      setFout(adres.error.issues[0]?.message ?? "Dit lijkt geen geldig e-mailadres.");
+      return;
+    }
     setBezig(true);
     try {
-      await startInloggen("mailcode", supabase.auth, { terugNaar: terugNaar(), email });
+      await startInloggen("mailcode", supabase.auth, {
+        terugNaar: terugNaar(),
+        email: adres.data,
+      });
       setVerstuurd(true);
     } catch {
       setFout("Er ging iets mis bij het versturen. Controleer je e-mailadres.");

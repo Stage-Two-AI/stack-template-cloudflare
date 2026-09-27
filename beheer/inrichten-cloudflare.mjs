@@ -220,14 +220,26 @@ function leesJsonLijst(tekst) {
   return Array.isArray(lijst) ? lijst : [];
 }
 
+/** De variabelen van één GitHub-omgeving, als `{ name, value }`. */
+async function leesGhVariabelen(d, env, repo) {
+  return leesJsonLijst(
+    await d.gh(["variable", "list", "--env", env, "--repo", repo, "--json", "name,value"]),
+  );
+}
+
+/** De namen van de repo-secrets (de waarden geeft GitHub nooit terug). */
+async function leesGhSecretNamen(d, repo) {
+  return leesJsonLijst(await d.gh(["secret", "list", "--repo", repo, "--json", "name"])).map(
+    (s) => s.name,
+  );
+}
+
 /** Zet variabelen per omgeving (alleen wat anders is) en repo-secrets via stdin. */
 async function zetGithub(d, repo, { variabelen, secrets = {} }) {
   const gezet = [];
   for (const env of OMGEVINGEN) {
     const huidig = Object.fromEntries(
-      leesJsonLijst(
-        await d.gh(["variable", "list", "--env", env, "--repo", repo, "--json", "name,value"]),
-      ).map((v) => [v.name, v.value]),
+      (await leesGhVariabelen(d, env, repo)).map((v) => [v.name, v.value]),
     );
     for (const [naam, waarde] of Object.entries(variabelen)) {
       if (huidig[naam] === waarde) continue;
@@ -237,9 +249,7 @@ async function zetGithub(d, repo, { variabelen, secrets = {} }) {
   }
   const namen = Object.keys(secrets);
   if (namen.length) {
-    const bestaand = leesJsonLijst(
-      await d.gh(["secret", "list", "--repo", repo, "--json", "name"]),
-    ).map((s) => s.name);
+    const bestaand = await leesGhSecretNamen(d, repo);
     for (const naam of namen) {
       const { waarde, altijd } = secrets[naam];
       if (!waarde || (!altijd && bestaand.includes(naam))) continue;
@@ -374,6 +384,15 @@ export async function richtIn(arg, d) {
     maskeer(wachtwoord);
     project = await supabase.maakProject(v.namen.project, wachtwoord);
     stap("3.1 Supabase-project", `aangemaakt (${project.ref}, ${REGIO})`);
+    // Het wachtwoord is alleen nu bekend: meteen bewaren, vóór een latere stap kan
+    // mislukken. Anders is het voorgoed weg en moet het in het dashboard opnieuw.
+    await zetGithub(d, arg.repo, {
+      variabelen: {},
+      secrets: {
+        SUPABASE_PROJECT_REF: { waarde: project.ref, altijd: true },
+        SUPABASE_DB_PASSWORD: { waarde: wachtwoord, altijd: true },
+      },
+    });
   }
   await supabase.wachtTotGezond(project.ref);
   const sleutels = await supabase.sleutels(project.ref);
@@ -449,9 +468,10 @@ export async function richtIn(arg, d) {
       VITE_INLOGDIENST: "cloudflare",
       CLOUDFLARE_ACCOUNT_ID: d.accountId,
     },
+    // Het wachtwoord staat er al (direct na het aanmaken van het project); hier alleen
+    // nog de project-ref voor een project dat al bestond.
     secrets: {
-      SUPABASE_PROJECT_REF: { waarde: project.ref, altijd: Boolean(wachtwoord) },
-      SUPABASE_DB_PASSWORD: { waarde: wachtwoord, altijd: true },
+      SUPABASE_PROJECT_REF: { waarde: project.ref, altijd: false },
     },
   });
   stap(
@@ -567,17 +587,13 @@ export async function ruimOp(arg, d) {
   if (arg.repo) {
     const namen = [];
     for (const env of OMGEVINGEN) {
-      const huidig = leesJsonLijst(
-        await d.gh(["variable", "list", "--env", env, "--repo", arg.repo, "--json", "name,value"]),
-      ).map((x) => x.name);
+      const huidig = (await leesGhVariabelen(d, env, arg.repo)).map((x) => x.name);
       for (const naam of GH_VARIABELEN.filter((n) => huidig.includes(n))) {
         if (!droog) await d.gh(["variable", "delete", naam, "--env", env, "--repo", arg.repo]);
         namen.push(`${env}/${naam}`);
       }
     }
-    const secrets = leesJsonLijst(
-      await d.gh(["secret", "list", "--repo", arg.repo, "--json", "name"]),
-    ).map((x) => x.name);
+    const secrets = await leesGhSecretNamen(d, arg.repo);
     for (const naam of GH_SECRETS.filter((n) => secrets.includes(n))) {
       if (!droog) await d.gh(["secret", "delete", naam, "--repo", arg.repo]);
       namen.push(`secret ${naam}`);
@@ -647,7 +663,6 @@ export async function werkToegangBij(arg, d) {
   }
   const sync = await synchroniseerPolicies(cf, t, { groepenIdp: d.groepenIdp, bestaand: policies });
   const gekoppeld = await koppelPolicies(cf, t, apps, sync.ids);
-  const weg = await verwijderOverbodig(cf, sync.overbodig);
 
   const ingetrokken = {};
   const onbekend = {};
@@ -671,10 +686,20 @@ export async function werkToegangBij(arg, d) {
     if (r.ingetrokken.length) ingetrokken[app] = r.ingetrokken;
     if (r.onbekend.length) onbekend[app] = r.onbekend;
   }
+  // Pas na het intrekken: een policy die nog aan een app hangt, weigert Cloudflare te
+  // verwijderen, en dat mag het intrekken van toegang nooit tegenhouden.
+  const waarschuwingen = [];
+  let weg = [];
+  try {
+    weg = await verwijderOverbodig(cf, sync.overbodig);
+  } catch (fout) {
+    waarschuwingen.push(`overbodige policies niet verwijderd: ${fout.message}`);
+  }
   return {
     acties: [...sync.acties, ...gekoppeld, ...weg.map((n) => `policy ${n} verwijderd`)],
     ingetrokken,
     onbekend,
+    waarschuwingen,
   };
 }
 

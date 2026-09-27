@@ -68,6 +68,14 @@ describe("LoginPage met andere diensten", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("mail");
   });
 
+  it("controleert bij mailcode eerst het adres, zonder Supabase aan te roepen", async () => {
+    render(<LoginPage dienst="mailcode" />);
+    await userEvent.type(screen.getByLabelText("E-mailadres"), "geen-adres");
+    await userEvent.click(screen.getByRole("button", { name: "Stuur inloglink" }));
+    expect(await screen.findByText("Dit lijkt geen geldig e-mailadres.")).toBeInTheDocument();
+    expect(signInWithOtp).not.toHaveBeenCalled();
+  });
+
   it("toont bij wachtwoord het formulier zoals voorheen", async () => {
     render(<LoginPage dienst="wachtwoord" />);
     await userEvent.type(screen.getByLabelText("E-mailadres"), "piet@klant.nl");

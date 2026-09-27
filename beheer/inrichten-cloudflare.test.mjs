@@ -105,8 +105,11 @@ test("volledige run: de schrijfacties volgen de volgorde van het ontwerp", async
   const r = await richtIn(ARG, d);
   const schrijf = w.schrijfacties();
   const ref = w.staat.projecten[0].ref;
-  assert.deepEqual(schrijf.slice(0, 6), [
+  assert.deepEqual(schrijf.slice(0, 8), [
     "POST sb/projects",
+    // het wachtwoord meteen bewaren, vóór iets anders kan mislukken
+    "gh secret set SUPABASE_PROJECT_REF",
+    "gh secret set SUPABASE_DB_PASSWORD",
     "POST cf/access/policies",
     "POST cf/access/apps saas",
     "admin createProvider",
@@ -114,7 +117,7 @@ test("volledige run: de schrijfacties volgen de volgorde van het ontwerp", async
     "POST cf/access/apps self_hosted",
   ]);
   assert.ok(
-    schrijf.slice(6).every((s) => s.startsWith("gh ")),
+    schrijf.slice(8).every((s) => s.startsWith("gh ")),
     "daarna alleen nog GitHub",
   );
   assert.equal(r.stappen.at(-1).actie, "overgeslagen: nog niet uitgerold");
@@ -270,6 +273,18 @@ test("een 4xx van Cloudflare bij de SaaS-app stopt vóór de Supabase-provider, 
     w.aanroepen.some((a) => a.methode === "PATCH"),
     false,
   );
+});
+
+test("het databasewachtwoord is bewaard, ook als een latere stap mislukt", async () => {
+  // Het wachtwoord van een nieuw project is alleen bij het aanmaken bekend. Mislukt een
+  // latere stap, dan moet het al in GitHub staan, anders is het voorgoed weg.
+  const w = nepWolk({
+    faal: (methode, _pad, body) =>
+      methode === "POST" && body?.type === "saas" ? { status: 400, message: "kapot" } : null,
+  });
+  await assert.rejects(() => richtIn(ARG, opzet(w)), /gaf 400/);
+  assert.ok(w.staat.ghSecrets.includes("SUPABASE_DB_PASSWORD"));
+  assert.ok(w.staat.ghSecrets.includes("SUPABASE_PROJECT_REF"));
 });
 
 test("SaaS-app: een lege lijst inlogmethoden is een fout, ook vóór er iets wordt aangemaakt", async () => {
@@ -471,6 +486,46 @@ test("toegang bijwerken: een verwijderd adres geeft een ban en afmelden via SQL"
 });
 
 // ---------------------------------------------------------------- uitvoer en grenzen
+
+test("toegang bijwerken: een mislukte policy-verwijdering houdt het intrekken niet tegen", async () => {
+  const w = nepWolk();
+  const d = opzet(w, {
+    toegang: {
+      groepen: {
+        a: { adressen: ["aiwincoholland@gmail.com"] },
+        oud: { adressen: ["oud@elders.nl"] },
+      },
+      apps: { "cf-proef": ["a", "oud"] },
+    },
+  });
+  await richtIn(ARG, d);
+  w.staat.gebruikers.push({ id: "22222222-2222-4222-8222-222222222222", email: "oud@elders.nl" });
+  d.toegang = {
+    groepen: { a: { adressen: ["aiwincoholland@gmail.com"] } },
+    apps: { "cf-proef": ["a"] },
+  };
+  const origineel = w.fetchFn;
+  d.cf = cloudflareClient({
+    fetchFn: async (url, opties = {}) =>
+      (opties.method ?? "GET") === "DELETE" && url.includes("/access/policies/")
+        ? {
+            ok: false,
+            status: 400,
+            statusText: "Fout",
+            text: async () => '{"success":false,"errors":[{"message":"in gebruik"}]}',
+          }
+        : origineel(url, opties),
+    token: "cf-token",
+    accountId: "acc",
+    teamDomein: "stagetwo",
+  });
+  const r = await werkToegangBij(ARG, d);
+  assert.ok(
+    w.aanroepen.some((a) => a.methode === "updateUserById"),
+    "Jan is toch ingetrokken",
+  );
+  assert.match(r.waarschuwingen.join(" "), /niet verwijderd/);
+});
 
 test("uitvoer: één regel INRICHTING zonder geheimen in leesbare vorm", async () => {
   const w = nepWolk();

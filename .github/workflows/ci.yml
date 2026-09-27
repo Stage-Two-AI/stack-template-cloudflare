@@ -49,6 +49,12 @@ jobs:
       - name: Unittests
         run: pnpm test
 
+      # De inrichting van de Cloudflare-proef (beheer/) heeft eigen tests met node --test.
+      # Alleen in de template zelf: afgeleide apps krijgen beheer/ niet mee.
+      - name: Beheer-tests (Cloudflare-proef)
+        if: hashFiles('beheer/**/*.test.mjs') != ''
+        run: pnpm beheer:test
+
       - name: Bouwt het echt
         run: pnpm build
 
