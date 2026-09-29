@@ -30,9 +30,15 @@ belangrijkste open vraag van de proef.
 - Gevonden: een net aangemaakte SaaS-app geeft een paar minuten 404 op het
   discovery-adres ("Application is not an OIDC application"). De inrichting wacht daar
   nu op (PR #5).
-- Koppeltest voorbereid: wachtwoordgebruiker `info@stagetwo.nl` met id
-  `6bff3fe7-2eff-4c80-a566-faaa3990ef4d` in project `jdglffjwhkjbpyrwecbm`.
-- Deze merge is de eerste uitrol (stap 4).
+- Koppeltest voorbereid: wachtwoordgebruiker `info@stagetwo.nl` in project `jdglffjwhkjbpyrwecbm`.
+- Eerste uitrol en tweede doorgang geslaagd (29-09). Uitrollen vroeg naast Workers
+  (Editor) ook het legacy-recht Workers Scripts: Edit; zonder dat weigert Cloudflare het
+  aanmaken van de Worker en de upload.
+- Koppeltest geslaagd, maar pas na `mailer_autoconfirm: true` (PR #8): Cloudflare zet
+  geen `email_verified`, en `attribute_mapping` mag dat veld niet zetten (PR #7 teruggedraaid).
+- **Antwoord op de hoofdvraag: de keten Cloudflare naar Supabase werkt**, inclusief
+  koppeling aan een bestaande gebruiker. Open: AE3/AE4 (toegang geven en intrekken) en
+  de test met Google Workspace als inlogdienst (verwacht: één inlog in plaats van twee codes).
 
 ## Draaiboek
 
@@ -88,16 +94,16 @@ Doe het in deze volgorde. Na elke stap: uitkomst en bewijs in de tabel hieronder
 
 | AE | Wat | Hoe | Uitkomst | Bewijs |
 |---|---|---|---|---|
-| AE1 | Piet logt één keer in en ziet alleen zijn rijen | stap 7, met de hand | open | |
-| AE2 | Jan komt niet binnen, ook niet via de inlogroute van Supabase | stap 8, script | open | |
+| AE1 | Piet logt één keer in en ziet alleen zijn rijen | stap 7, met de hand | geslaagd, met kanttekening | 29-09: inloggen met info@stagetwo.nl komt in de app. Met alleen One-time PIN vraagt Access twee codes (deur en inlogdienst); met een echte IdP naar verwachting één. |
+| AE2 | Jan komt niet binnen, ook niet via de inlogroute van Supabase | stap 8, script | geslaagd | controle-doorsteek.mjs 29-09: app en /auth/v1/authorize sturen allebei naar de Access-login |
 | AE3 | toegang via PR; bij KienIA alleen door IT te mergen | stap 10 | open | |
 | AE4 | ander domein krijgt geen toegang | stap 10, met een adres buiten de groep | open | |
-| AE5 | preview vraagt om inloggen en toont de testbalk | stap 8, script, en met de hand | open | |
+| AE5 | preview vraagt om inloggen en toont de testbalk | stap 8, script, en met de hand | geslaagd (inloggen) | PR #9: link pr-9-cf-proef.stagetwotemp.workers.dev kwam als reactie in de PR en stuurt naar de Access-login |
 | AE5 | preview ziet andere gegevens dan productie | niet in deze proef: één Supabase-project (KTD9), volgt in U9 | niet aangetoond | |
-| AE6 | geen omweg via workers.dev of versie-adressen | stap 8, script | open | |
+| AE6 | geen omweg via workers.dev of versie-adressen | stap 8, script | geslaagd | workers.dev-adres en versie-adres 2bf5b77a-… sturen naar de Access-login |
 | AE7 | Edge Functions en Hermes ongemoeid | geen Edge Functions in de proefapp; het script raakt ze niet (getest) | open | |
-| AE8 | tabel zonder grant onbereikbaar | stap 6 en 8 | open | |
-| AE9 | bestaande gebruiker houdt zijn gegevens | stap 7, koppeltest | open | |
+| AE8 | tabel zonder grant onbereikbaar | stap 6 en 8 | geslaagd | proef_zonder_grant via de Data API: 401 |
+| AE9 | bestaande gebruiker houdt zijn gegevens | stap 7, koppeltest | geslaagd | wachtwoordgebruiker d8d4970d-… kreeg identiteit custom:cloudflare erbij; geen tweede rij in auth.users |
 
 ## Metingen
 
