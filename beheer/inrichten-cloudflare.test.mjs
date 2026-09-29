@@ -23,6 +23,7 @@ const ARG = {
   hostname: "cf-proef.stagetwo.nl",
   worker: "cf-proef",
   repo: "Stage-Two-AI/stack-template-cloudflare",
+  voorvoegsel: "cf-proef-",
   droogloop: false,
 };
 const WACHTWOORD = "GeheimDatabaseWachtwoord1234567";
@@ -57,22 +58,96 @@ function opzet(w, extra = {}) {
 
 // ---------------------------------------------------------------- argumenten
 
+const PROEF = ["--voorvoegsel", "cf-proef-"];
+const RP = ["--voorvoegsel", "rp-", "--repo", "Richplant-BV/richplant-start"];
+
 test("argumenten: app verplicht, modi sluiten elkaar uit", () => {
-  assert.deepEqual(leesArgumenten(["--app", "cf-proef", "--droogloop"]), {
+  assert.deepEqual(leesArgumenten([...PROEF, "--app", "cf-proef", "--droogloop"]), {
     app: "cf-proef",
     hostname: null,
     repo: null,
+    wrangler: null,
+    voorvoegsel: "cf-proef-",
     droogloop: true,
     opruimen: false,
     vangnet: false,
     tweedeDoorgang: false,
     toegang: false,
   });
-  assert.throws(() => leesArgumenten(["--droogloop"]), /--app/);
-  assert.throws(() => leesArgumenten(["--app", "Cf_Proef"]), /kleine letters/);
-  assert.throws(() => leesArgumenten(["--app", "a", "--opruimen", "--vangnet"]), /één van/);
-  assert.throws(() => leesArgumenten(["--app", "a", "--wat"]), /onbekende optie/);
-  assert.equal(leesArgumenten(["--opruimen"]).opruimen, true, "opruimen kan zonder --app");
+  assert.throws(() => leesArgumenten([...PROEF, "--droogloop"]), /--app/);
+  assert.throws(() => leesArgumenten([...PROEF, "--app", "Cf_Proef"]), /kleine letters/);
+  assert.throws(
+    () => leesArgumenten([...PROEF, "--app", "a", "--opruimen", "--vangnet"]),
+    /één van/,
+  );
+  assert.throws(() => leesArgumenten([...PROEF, "--app", "a", "--wat"]), /onbekende optie/);
+  assert.equal(
+    leesArgumenten([...PROEF, "--opruimen"]).opruimen,
+    true,
+    "opruimen kan zonder --app",
+  );
+});
+
+test("argumenten: zonder voorvoegsel stopt het script met een duidelijke melding", () => {
+  assert.throws(
+    () => leesArgumenten(["--app", "cf-proef", "--droogloop"], {}),
+    /voorvoegsel ontbreekt.*--voorvoegsel.*BEHEER_VOORVOEGSEL/,
+  );
+  for (const fout of ["rp", "RP-", "rp_", "-rp-", "rp-'x-", `${"a".repeat(17)}-`]) {
+    assert.throws(() => leesArgumenten(["--voorvoegsel", fout, "--app", "a"]), /voorvoegsel/, fout);
+  }
+  const uitEnv = leesArgumenten(["--toegang"], { BEHEER_VOORVOEGSEL: "rp-" });
+  assert.equal(uitEnv.voorvoegsel, "rp-", "BEHEER_VOORVOEGSEL telt als instelling");
+  const vlagWint = leesArgumenten(["--voorvoegsel", "cf-proef-", "--toegang"], {
+    BEHEER_VOORVOEGSEL: "rp-",
+  });
+  assert.equal(vlagWint.voorvoegsel, "cf-proef-");
+});
+
+test("argumenten: buiten de proef zijn --repo en --wrangler verplicht", () => {
+  const actions = { GITHUB_REPOSITORY: "Richplant-BV/stack-beheer" };
+  assert.throws(
+    () =>
+      leesArgumenten(
+        ["--voorvoegsel", "rp-", "--app", "richplant", "--wrangler", "a/w.jsonc"],
+        actions,
+      ),
+    /--repo/,
+    "buiten de proef nooit terugvallen op de eigen repo",
+  );
+  assert.throws(
+    () =>
+      leesArgumenten(["--voorvoegsel", "rp-", "--app", "richplant", "--wrangler", "a/w.jsonc"], {}),
+    /--repo/,
+  );
+  assert.throws(() => leesArgumenten([...RP, "--app", "richplant"], actions), /--wrangler/);
+  const a = leesArgumenten(
+    [...RP, "--app", "richplant", "--wrangler", "app/wrangler.jsonc"],
+    actions,
+  );
+  assert.equal(a.repo, "Richplant-BV/richplant-start");
+  assert.equal(a.wrangler, "app/wrangler.jsonc");
+  assert.throws(
+    () => leesArgumenten(["--voorvoegsel", "rp-", "--repo", "geen-org", "--toegang"]),
+    /--repo/,
+  );
+  assert.equal(
+    leesArgumenten(["--voorvoegsel", "rp-", "--toegang"], actions).repo,
+    null,
+    "toegang bijwerken heeft geen repo nodig",
+  );
+});
+
+test("argumenten: de proef valt terug op GITHUB_REPOSITORY en wrangler.jsonc", () => {
+  const a = leesArgumenten([...PROEF, "--app", "cf-proef"], {
+    GITHUB_REPOSITORY: "Stage-Two-AI/stack-template-cloudflare",
+  });
+  assert.equal(a.repo, "Stage-Two-AI/stack-template-cloudflare");
+  assert.equal(a.wrangler, null, "het script leest dan wrangler.jsonc in de werkmap");
+  const b = leesArgumenten([...PROEF, "--app", "cf-proef", "--repo", "Stage-Two-AI/ander"], {
+    GITHUB_REPOSITORY: "Stage-Two-AI/stack-template-cloudflare",
+  });
+  assert.equal(b.repo, "Stage-Two-AI/ander", "--repo gaat voor");
 });
 
 // ---------------------------------------------------------------- droogloop
@@ -203,7 +278,6 @@ test("GitHub: variabelen per omgeving, secrets via stdin, niets in de argumenten
       CLOUDFLARE_ACCOUNT_ID: "acc",
     });
   }
-  assert.deepEqual(w.staat.ghSecrets.sort(), ["SUPABASE_DB_PASSWORD", "SUPABASE_PROJECT_REF"]);
   const gh = w.aanroepen.filter((a) => a.soort === "gh");
   assert.ok(gh.every((a) => a.args.includes("--repo") && a.args.includes(ARG.repo)));
   assert.ok(
@@ -212,7 +286,117 @@ test("GitHub: variabelen per omgeving, secrets via stdin, niets in de argumenten
   );
   const ww = gh.find((a) => a.args[2] === "SUPABASE_DB_PASSWORD");
   assert.equal(ww.invoer, WACHTWOORD);
-  assert.equal(ww.args.includes("--env"), false, "deploy-db leest repo-secrets");
+});
+
+test("GitHub: de databasesecrets staan in omgeving production, niet op de repo", async () => {
+  const w = nepWolk();
+  await richtIn(ARG, opzet(w));
+  assert.deepEqual(w.staat.ghSecrets.production.sort(), [
+    "SUPABASE_DB_PASSWORD",
+    "SUPABASE_PROJECT_REF",
+  ]);
+  assert.deepEqual(w.staat.ghSecrets.repo ?? [], [], "geen repo-secret: een PR-tak kan die lezen");
+  const zetten = w.aanroepen.filter(
+    (a) => a.soort === "gh" && a.args[1] === "set" && a.args[0] === "secret",
+  );
+  assert.ok(zetten.length > 0);
+  for (const a of zetten) {
+    assert.equal(a.args[a.args.indexOf("--env") + 1], "production", a.args.join(" "));
+  }
+});
+
+test("GitHub: de openbare previewwaarden staan als PREVIEW_-repovariabelen", async () => {
+  const w = nepWolk();
+  await richtIn(ARG, opzet(w));
+  const ref = w.staat.projecten[0].ref;
+  assert.deepEqual(w.staat.ghVariabelen.repo, {
+    PREVIEW_VITE_SUPABASE_URL: `https://${ref}.supabase.co`,
+    PREVIEW_VITE_SUPABASE_ANON_KEY: `anon-${ref}`,
+    PREVIEW_VITE_SUPABASE_SCHEMA: "public",
+    PREVIEW_VITE_INLOGDIENST: "cloudflare",
+  });
+});
+
+test("voorvoegsel rp- en --repo: alles krijgt rp- en alles gaat naar die repo", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const arg = {
+    ...ARG,
+    app: "richplant",
+    hostname: "richplant-start.richplant.nl",
+    worker: "richplant-start",
+    voorvoegsel: "rp-",
+    repo: "Richplant-BV/richplant-start",
+  };
+  const toegang = {
+    groepen: { richplant: { domeinen: ["richplant.nl"] } },
+    apps: { richplant: ["richplant"] },
+  };
+  await richtIn(arg, opzet(w, { toegang }));
+  assert.deepEqual(
+    w.staat.policies.map((p) => p.name),
+    ["rp-richplant"],
+  );
+  assert.deepEqual(w.staat.apps.map((a) => a.name).sort(), [
+    "rp-richplant",
+    "rp-richplant-inlog",
+    "rp-richplant-worker",
+  ]);
+  assert.deepEqual(
+    w.staat.projecten.map((p) => p.name),
+    ["rp-richplant"],
+  );
+  const gh = w.aanroepen.filter((a) => a.soort === "gh");
+  assert.ok(gh.length > 0);
+  for (const a of gh) {
+    assert.equal(a.args[a.args.indexOf("--repo") + 1], "Richplant-BV/richplant-start");
+    assert.equal(a.args.includes("Stage-Two-AI/stack-template-cloudflare"), false);
+  }
+});
+
+test("voorvoegsel rp-: opruimen raakt alleen rp-namen", async () => {
+  const w = nepWolk({
+    workerBestaat: true,
+    policies: [{ id: "proef-pol", name: "cf-proef-stagetwo", decision: "allow", include: [] }],
+    apps: [{ id: "proef-app", name: "cf-proef-cf-proef-inlog", type: "saas" }],
+    projecten: [
+      {
+        ref: "proefref",
+        name: "cf-proef-cf-proef",
+        organization_slug: "stagetwo",
+        status: "ACTIVE_HEALTHY",
+      },
+    ],
+  });
+  const arg = {
+    ...ARG,
+    app: "richplant",
+    voorvoegsel: "rp-",
+    repo: "Richplant-BV/richplant-start",
+  };
+  const toegang = { groepen: { rp: { domeinen: ["richplant.nl"] } }, apps: { richplant: ["rp"] } };
+  const d = opzet(w, { toegang });
+  await richtIn(arg, d);
+  await ruimOp(arg, d);
+  assert.deepEqual(
+    w.staat.policies.map((p) => p.id),
+    ["proef-pol"],
+  );
+  assert.deepEqual(
+    w.staat.apps.map((a) => a.id),
+    ["proef-app"],
+  );
+  assert.deepEqual(
+    w.staat.projecten.map((p) => p.ref),
+    ["proefref"],
+  );
+});
+
+test("zonder voorvoegsel in de argumenten weigert de inrichting vóór er iets gebeurt", async () => {
+  const w = nepWolk();
+  const { voorvoegsel: _weg, ...zonder } = ARG;
+  await assert.rejects(() => richtIn(zonder, opzet(w)), /voorvoegsel/);
+  await assert.rejects(() => ruimOp(zonder, opzet(w)), /voorvoegsel/);
+  assert.deepEqual(w.aanroepen, []);
 });
 
 test("tweede run met alles al aanwezig maakt niets dubbel aan", async () => {
@@ -283,8 +467,8 @@ test("het databasewachtwoord is bewaard, ook als een latere stap mislukt", async
       methode === "POST" && body?.type === "saas" ? { status: 400, message: "kapot" } : null,
   });
   await assert.rejects(() => richtIn(ARG, opzet(w)), /gaf 400/);
-  assert.ok(w.staat.ghSecrets.includes("SUPABASE_DB_PASSWORD"));
-  assert.ok(w.staat.ghSecrets.includes("SUPABASE_PROJECT_REF"));
+  assert.ok(w.staat.ghSecrets.production.includes("SUPABASE_DB_PASSWORD"));
+  assert.ok(w.staat.ghSecrets.production.includes("SUPABASE_PROJECT_REF"));
 });
 
 test("SaaS-app: een lege lijst inlogmethoden is een fout, ook vóór er iets wordt aangemaakt", async () => {
@@ -468,9 +652,65 @@ test("--vangnet: e-mail weer aan en een hook die jan@elders.nl weigert en piet@k
   );
   assert.equal("disable_signup" in patch, false);
   assert.equal(w.staat.ghVariabelen.production.VITE_INLOGDIENST, "mailcode");
+  assert.equal(w.staat.ghVariabelen.repo.PREVIEW_VITE_INLOGDIENST, "mailcode");
   assert.equal(magAanmelden("jan@elders.nl", toegang, "cf-proef"), "nee", "JS-spiegel van de hook");
   assert.equal(magAanmelden("piet@klant.nl", toegang, "cf-proef"), "ja", "JS-spiegel van de hook");
   assert.equal(r.supabase.ref, ref);
+});
+
+test("--vangnet met rp-: de hookfunctie heet rp_voor_aanmelden", async () => {
+  const w = nepWolk();
+  const arg = { ...ARG, voorvoegsel: "rp-", repo: "Richplant-BV/richplant-start" };
+  const d = opzet(w);
+  await richtIn(arg, d);
+  const r = await vangnet(arg, d);
+  assert.equal(r.hook, "rp_voor_aanmelden");
+  assert.match(w.staat.sql[0], /function public\.rp_voor_aanmelden\(event jsonb\)/);
+});
+
+test("vangnet aan: een wijziging in toegang.json werkt ook de aanmeld-hook bij", async () => {
+  const w = nepWolk();
+  const d = opzet(w, {
+    toegang: { groepen: { klant: { domeinen: ["klant.nl"] } }, apps: { "cf-proef": ["klant"] } },
+  });
+  await richtIn(ARG, d);
+  await vangnet(ARG, d);
+  assert.equal(w.staat.sql.length, 1);
+  d.toegang = {
+    groepen: { klant: { domeinen: ["klant.nl", "klant.be"] } },
+    apps: { "cf-proef": ["klant"] },
+  };
+  w.aanroepen.length = 0;
+  const r = await werkToegangBij(ARG, d);
+  assert.equal(w.staat.sql.length, 2, "de hook is opnieuw geschreven");
+  assert.match(w.staat.sql[1], /create or replace function public\.cf_proef_voor_aanmelden/);
+  assert.match(w.staat.sql[1], /array\['klant\.nl', 'klant\.be'\]/);
+  assert.ok(
+    r.acties.some((a) => /aanmeld-hook/.test(a)),
+    JSON.stringify(r.acties),
+  );
+});
+
+test("vangnet uit: toegang bijwerken schrijft geen hook", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(ARG, d);
+  await werkToegangBij(ARG, d);
+  assert.deepEqual(w.staat.sql, []);
+});
+
+test("vangnet aan, droogloop van toegang bijwerken: plant de hook maar schrijft niets", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(ARG, d);
+  await vangnet(ARG, d);
+  w.aanroepen.length = 0;
+  const r = await werkToegangBij({ ...ARG, droogloop: true }, d);
+  assert.deepEqual(w.schrijfacties(), []);
+  assert.ok(
+    r.acties.some((a) => /aanmeld-hook/.test(a)),
+    JSON.stringify(r.acties),
+  );
 });
 
 // ---------------------------------------------------------------- opruimen
@@ -490,7 +730,9 @@ test("--opruimen: omgekeerde volgorde, meldt wat er stond en laat alles zonder v
         status: "ACTIVE_HEALTHY",
       },
     ],
-    ghVariabelen: { production: { ANDERE: "blijft" } },
+    ghVariabelen: { production: { ANDERE: "blijft" }, repo: { REPO_ANDERE: "blijft" } },
+    // Een oud repo-secret uit de tijd vóór de omgeving production: ook weg.
+    ghSecrets: { repo: ["SUPABASE_DB_PASSWORD", "ANDER_SECRET"] },
   });
   const d = opzet(w);
   await richtIn(ARG, d);
@@ -535,7 +777,9 @@ test("--opruimen: omgekeerde volgorde, meldt wat er stond en laat alles zonder v
     ANDERE: "blijft",
     CLOUDFLARE_ACCOUNT_ID: "acc",
   });
-  assert.deepEqual(w.staat.ghSecrets, []);
+  assert.deepEqual(w.staat.ghVariabelen.repo, { REPO_ANDERE: "blijft" });
+  assert.deepEqual(w.staat.ghSecrets.production, []);
+  assert.deepEqual(w.staat.ghSecrets.repo, ["ANDER_SECRET"]);
   assert.match(r.waarschuwingen.join(" "), /Worker cf-proef/);
 });
 

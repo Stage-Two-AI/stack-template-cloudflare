@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { cloudflareClient } from "./lib/cloudflare.mjs";
 import {
+  hookFunctie,
   koppelPolicies,
   magAanmelden,
   policyVoorGroep,
@@ -15,6 +16,7 @@ import {
 } from "./lib/toegang.mjs";
 import { nepWolk } from "./nep-wolk.mjs";
 
+const VV = "cf-proef-";
 const KLANT = {
   groepen: {
     klant: { domeinen: ["klant.nl"], uitsluiten: ["jan@klant.nl"] },
@@ -68,7 +70,7 @@ test("validatie: een ongeldig domein of adres noemt groep en veld", () => {
 // ---------------------------------------------------------------- vertaling
 
 test("vertaling: domein klant.nl wordt één include-regel op e-maildomein en niets anders (AE4)", () => {
-  const p = policyVoorGroep("klant", { domeinen: ["klant.nl"] });
+  const p = policyVoorGroep("klant", { domeinen: ["klant.nl"] }, { voorvoegsel: VV });
   assert.equal(p.name, "cf-proef-klant");
   assert.equal(p.decision, "allow");
   assert.deepEqual(p.include, [{ email_domain: { domain: "klant.nl" } }]);
@@ -77,26 +79,81 @@ test("vertaling: domein klant.nl wordt één include-regel op e-maildomein en ni
 });
 
 test("vertaling: uitsluiten wordt een exclude-regel voor dat adres", () => {
-  const p = policyVoorGroep("klant", { domeinen: ["klant.nl"], uitsluiten: ["jan@klant.nl"] });
+  const p = policyVoorGroep(
+    "klant",
+    { domeinen: ["klant.nl"], uitsluiten: ["jan@klant.nl"] },
+    { voorvoegsel: VV },
+  );
   assert.deepEqual(p.exclude, [{ email: { email: "jan@klant.nl" } }]);
 });
 
 test("vertaling: adressen worden e-mailregels", () => {
-  const p = policyVoorGroep("stagetwo", { adressen: ["aiwincoholland@gmail.com"] });
+  const p = policyVoorGroep(
+    "stagetwo",
+    { adressen: ["aiwincoholland@gmail.com"] },
+    { voorvoegsel: VV },
+  );
   assert.deepEqual(p.include, [{ email: { email: "aiwincoholland@gmail.com" } }]);
 });
 
 test("vertaling: idp_groepen zonder gekoppelde IdP geeft een duidelijke fout, geen lege regel (AE3)", () => {
   assert.throws(
-    () => policyVoorGroep("it", { idp_groepen: ["IT-beheer"] }),
+    () => policyVoorGroep("it", { idp_groepen: ["IT-beheer"] }, { voorvoegsel: VV }),
     /groep "it", veld idp_groepen: .*identiteitsdienst/,
   );
   const p = policyVoorGroep(
     "it",
     { idp_groepen: ["abc-123"] },
-    { groepenIdp: { type: "azureAD", id: "idp-entra" } },
+    { groepenIdp: { type: "azureAD", id: "idp-entra" }, voorvoegsel: VV },
   );
   assert.deepEqual(p.include, [{ azureAD: { id: "abc-123", identity_provider_id: "idp-entra" } }]);
+});
+
+test("voorvoegsel: zonder voorvoegsel geen policy, met rp- krijgt de policy rp-", () => {
+  assert.throws(() => policyVoorGroep("klant", { domeinen: ["klant.nl"] }), /voorvoegsel/);
+  assert.throws(
+    () => policyVoorGroep("klant", { domeinen: ["klant.nl"] }, { voorvoegsel: "RP" }),
+    /voorvoegsel/,
+  );
+  const p = policyVoorGroep("klant", { domeinen: ["klant.nl"] }, { voorvoegsel: "rp-" });
+  assert.equal(p.name, "rp-klant");
+});
+
+test("voorvoegsel: de hookfunctie volgt het voorvoegsel en is veilig voor SQL", () => {
+  assert.equal(hookFunctie("cf-proef-"), "cf_proef_voor_aanmelden");
+  assert.equal(hookFunctie("rp-"), "rp_voor_aanmelden");
+  assert.match(hookFunctie("a1-b2-"), /^[a-z0-9_]+$/);
+  for (const fout of [
+    undefined,
+    "",
+    "rp",
+    "Rp-",
+    "rp_",
+    "1rp-",
+    "rp-'; drop-",
+    `${"a".repeat(17)}-`,
+  ]) {
+    assert.throws(() => hookFunctie(fout), /voorvoegsel/, String(fout));
+  }
+});
+
+test("synchroniseren met rp-: alleen rp-policies zijn van ons, cf-proef- blijft buiten schot", async () => {
+  const w = nepWolk({
+    policies: [{ id: "ander", name: "cf-proef-oud", decision: "allow", include: [] }],
+  });
+  const cf = cloudflareClient({
+    fetchFn: w.fetchFn,
+    token: "t",
+    accountId: "acc",
+    teamDomein: "stagetwo",
+  });
+  const s = await synchroniseerPolicies(cf, KLANT, { voorvoegsel: "rp-" });
+  assert.deepEqual(w.staat.policies.map((p) => p.name).sort(), [
+    "cf-proef-oud",
+    "rp-klant",
+    "rp-stagetwo",
+  ]);
+  assert.deepEqual(s.overbodig, [], "een policy met een ander voorvoegsel is nooit overbodig");
 });
 
 // ---------------------------------------------------------------- synchroniseren
@@ -110,7 +167,7 @@ async function ingericht() {
     accountId: "acc",
     teamDomein: "stagetwo",
   });
-  const s = await synchroniseerPolicies(cf, KLANT);
+  const s = await synchroniseerPolicies(cf, KLANT, { voorvoegsel: VV });
   const ids = KLANT.apps["cf-proef"].map((g) => s.ids[g]);
   for (const [naam, type] of [
     ["cf-proef-cf-proef", "self_hosted"],
@@ -128,9 +185,9 @@ async function ingericht() {
 
 test("synchroniseren: een ongewijzigd bestand leidt tot nul schrijfacties", async () => {
   const { w, cf } = await ingericht();
-  const s = await synchroniseerPolicies(cf, KLANT);
+  const s = await synchroniseerPolicies(cf, KLANT, { voorvoegsel: VV });
   const apps = await cf.apps();
-  await koppelPolicies(cf, KLANT, apps, s.ids);
+  await koppelPolicies(cf, KLANT, apps, s.ids, VV);
   await verwijderOverbodig(cf, s.overbodig);
   assert.deepEqual(w.schrijfacties(), []);
   assert.deepEqual(s.acties, []);
@@ -142,8 +199,8 @@ test("synchroniseren: een groep weghalen haalt de policy van beide apps en verwi
     groepen: { stagetwo: KLANT.groepen.stagetwo },
     apps: { "cf-proef": ["stagetwo"] },
   };
-  const s = await synchroniseerPolicies(cf, zonderKlant);
-  await koppelPolicies(cf, zonderKlant, await cf.apps(), s.ids);
+  const s = await synchroniseerPolicies(cf, zonderKlant, { voorvoegsel: VV });
+  await koppelPolicies(cf, zonderKlant, await cf.apps(), s.ids, VV);
   await verwijderOverbodig(cf, s.overbodig);
   const schrijf = w.schrijfacties();
   assert.deepEqual(
@@ -168,7 +225,7 @@ test("synchroniseren: een gewijzigde groep werkt de policy bij, zonder nieuwe aa
   const { w, cf } = await ingericht();
   const anders = structuredClone(KLANT);
   anders.groepen.klant.domeinen.push("klant.be");
-  await synchroniseerPolicies(cf, anders);
+  await synchroniseerPolicies(cf, anders, { voorvoegsel: VV });
   assert.deepEqual(
     w.schrijfacties().map((x) => x.split(" ")[0]),
     ["PUT"],
@@ -183,7 +240,10 @@ test("synchroniseren: een policy zonder voorvoegsel met dezelfde naam laat alles
     accountId: "acc",
     teamDomein: "stagetwo",
   });
-  await assert.rejects(() => synchroniseerPolicies(cf, KLANT), /"klant".*zonder voorvoegsel/);
+  await assert.rejects(
+    () => synchroniseerPolicies(cf, KLANT, { voorvoegsel: VV }),
+    /"klant".*zonder voorvoegsel/,
+  );
   assert.deepEqual(w.schrijfacties(), []);
 });
 
@@ -196,7 +256,11 @@ test("synchroniseren: een ongeldig bestand synchroniseert niets", async () => {
     teamDomein: "stagetwo",
   });
   await assert.rejects(() =>
-    synchroniseerPolicies(cf, { groepen: KLANT.groepen, apps: { x: ["weg"] } }),
+    synchroniseerPolicies(
+      cf,
+      { groepen: KLANT.groepen, apps: { x: ["weg"] } },
+      { voorvoegsel: VV },
+    ),
   );
   assert.deepEqual(w.aanroepen, []);
 });

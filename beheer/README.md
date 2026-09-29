@@ -1,7 +1,8 @@
 # beheer/: inrichting van de Cloudflare-proef
 
-Deze map hoort alleen bij de proef. Hij gaat niet mee naar afgeleide apps
-(`nietMeenemen` in `.claude/stack-manifest.json`) en verhuist in U9 naar `stack-beheer`.
+Deze map gaat niet mee naar afgeleide apps (`nietMeenemen` in
+`.claude/stack-manifest.json`). Een beheer-repo kan hem wel als zelfstandig pakket
+kopiëren (zie "Los van de template"); de nette plek wordt later `stack-beheer`.
 
 Wat erin zit:
 
@@ -12,12 +13,21 @@ Wat erin zit:
 | `lib/supabase.mjs` | project, sleutels, auth-config, custom provider `custom:cloudflare` |
 | `lib/toegang.mjs` | `toegang.json` controleren, vertalen naar policies, intrekken, vangnet-SQL |
 | `toegang.json` | wie bij welke app mag |
+| `package.json` | maakt van `beheer/` een zelfstandig pakket (zie "Los van de template") |
 | `*.test.mjs`, `nep-wolk.mjs` | tests tegen een nagebootste API (`pnpm beheer:test`) |
 
-Alles wat het script aanmaakt heeft een naam die begint met `cf-proef-`. Wat al bestaat
-met dat voorvoegsel wordt hergebruikt. Bestaat er iets met dezelfde naam zónder
-voorvoegsel, of staat er al een andere Access-app op de hostname, dan stopt het script
-voordat het iets wijzigt.
+Alles wat het script aanmaakt heeft een naam die begint met het voorvoegsel. Dat is een
+verplichte instelling: `--voorvoegsel <vv->` of de omgevingsvariabele
+`BEHEER_VOORVOEGSEL` (de vlag gaat voor). De proef gebruikt `cf-proef-`, Richplant `rp-`.
+Het patroon is streng: een kleine letter, hoogstens vijftien kleine letters, cijfers of
+streepjes, en een streepje aan het eind. Zonder voorvoegsel start het script niet.
+
+Wat al bestaat met het voorvoegsel wordt hergebruikt; opruimen raakt alleen namen met
+het voorvoegsel. Bestaat er iets met dezelfde naam zónder voorvoegsel, of staat er al
+een andere Access-app op de hostname, dan stopt het script voordat het iets wijzigt. De
+hookfunctie van het vangnet heet ook naar het voorvoegsel (`cf_proef_voor_aanmelden`,
+`rp_voor_aanmelden`). Kies voorvoegsels die niet met elkaar beginnen: met `cf-` zou
+opruimen ook alles van `cf-proef-` meenemen.
 
 ## Voorwaarden (door Christijn)
 
@@ -57,14 +67,32 @@ zonder sleutels, en `preview-uitrollen.yml` uploadt het resultaat vanaf `main`. 
 omgevingen `production` en `preview` moeten bestaan voordat de inrichting draait; het
 script maakt ze niet aan.
 
-De PR-job leest de openbare waarden van de test als repo-variabelen (geen secrets, ze
-staan toch in de bundel): `PREVIEW_VITE_SUPABASE_URL`, `PREVIEW_VITE_SUPABASE_ANON_KEY`,
-`PREVIEW_VITE_INLOGDIENST` en optioneel `PREVIEW_VITE_SUPABASE_SCHEMA` en
-`PREVIEW_VITE_SENTRY_DSN`. Ontbreekt `PREVIEW_VITE_SUPABASE_URL` bij een app met
+Wat de inrichting in de app-repo zet:
+
+| Waar | Wat |
+|---|---|
+| omgevingen `production` en `preview`, variabelen | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INLOGDIENST`, `CLOUDFLARE_ACCOUNT_ID` |
+| repo-variabelen | `PREVIEW_VITE_SUPABASE_URL`, `PREVIEW_VITE_SUPABASE_ANON_KEY`, `PREVIEW_VITE_SUPABASE_SCHEMA` (`public`), `PREVIEW_VITE_INLOGDIENST` |
+| omgeving `production`, secrets | `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD` |
+
+De PR-job in `uitrollen.yml` noemt geen omgeving en leest daarom de `PREVIEW_`-
+repovariabelen (geen secrets, ze staan toch in de bundel). `PREVIEW_VITE_SENTRY_DSN` zet
+het script niet; die is optioneel. Ontbreekt `PREVIEW_VITE_SUPABASE_URL` bij een app met
 database, dan meldt de PR-job dat en komt er geen preview.
 
-Voor `deploy-db.yml` is ook het repo-secret `SUPABASE_ACCESS_TOKEN` nodig. Dat zet het
-script niet; zet het zelf als de migraties mee moeten draaien.
+De databasesecrets staan in omgeving `production`, niet op de repo: een workflow op een
+PR-tak kan repo-secrets lezen, maar niet die van een omgeving die tot `main` beperkt is.
+`deploy-db.yml` draait zijn migratiejob daarom in omgeving `production` en migreert met
+`supabase db push --db-url`, gebouwd uit `SUPABASE_PROJECT_REF` en
+`SUPABASE_DB_PASSWORD`. Er komt geen access token van Supabase in de app-repo: dat geeft
+rechten op alle projecten van de organisatie en blijft in de beheer-omgeving.
+
+De directe databaseverbinding (`db.<ref>.supabase.co`) is alleen via IPv6 bereikbaar, en
+de runners van GitHub hebben geen IPv6. Zet daarom in omgeving `production` de variabele
+`SUPABASE_POOLER_HOST` met de host van de session pooler (Supabase > Connect > Session
+pooler, bijvoorbeeld `aws-0-eu-central-1.pooler.supabase.com`). Dan migreert
+`deploy-db.yml` via de pooler, met gebruiker `postgres.<ref>`. Het script zet die
+variabele (nog) niet.
 
 ## De workflows draaien
 
@@ -84,6 +112,9 @@ gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=fals
 gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=false -f tweede_doorgang=true
 ```
 
+De workflow geeft `--voorvoegsel cf-proef-` mee. Alleen met dat voorvoegsel valt het
+script terug op deze repo (`GITHUB_REPOSITORY`) en op `wrangler.jsonc` in de werkmap.
+
 Stap 3 zit ook in elke gewone run: zolang er nog niet is uitgerold meldt het script
 "nog niet uitgerold" en slaat hij de stap over.
 
@@ -101,7 +132,9 @@ gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=fals
 **Proef toegang bijwerken** (`proef-toegang.yml`) draait vanzelf als `toegang.json` op
 `main` verandert. Hij zet de policies gelijk aan het bestand, hangt ze aan de
 Access-apps en trekt de toegang in van wie er niet meer in staat: een ban en afmelden
-van alle sessies in Supabase.
+van alle sessies in Supabase. Staat het vangnet aan (de aanmeld-hook van Supabase wijst
+naar onze functie), dan schrijft hij ook de hook opnieuw, zodat die het nieuwe bestand
+volgt.
 
 ## toegang.json
 
@@ -136,8 +169,9 @@ de rest van het werk loopt gewoon door.
 
 ## Opruimen
 
-Verwijdert alles met het voorvoegsel `cf-proef-`, in omgekeerde volgorde: Access op de
-Worker, de GitHub-variabelen en -secrets die het script zette, de Access-app op de
+Verwijdert alles met het voorvoegsel (hier `cf-proef-`), in omgekeerde volgorde: Access
+op de Worker, de GitHub-variabelen en -secrets die het script zette (ook een oud
+databasesecret op de repo zelf), de Access-app op de
 hostname, de custom provider, de SaaS-app, de policies en als laatste het
 Supabase-project. Alles zonder voorvoegsel blijft staan. Eerst kijken:
 
@@ -154,6 +188,39 @@ gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=fals
 De Worker `cf-proef` zelf en zijn eigen-domeinroute horen bij wrangler en blijven
 staan; het script waarschuwt als hij nog uitgerold is. Verwijder hem daarna in het
 Cloudflare-dashboard (Workers & Pages > cf-proef > Settings > Delete).
+
+## Los van de template (beheer-repo)
+
+`beheer/` draait ook zonder de rest van de template, bijvoorbeeld in de beheer-repo van
+een klant die een app-repo in een andere repo of organisatie inricht. Kopieer daarvoor:
+
+- de map `beheer/` (met `package.json`);
+- het bestand `scripts/lib/cloudflare-config.mjs`, **op hetzelfde relatieve pad**
+  (`../scripts/lib/cloudflare-config.mjs` vanuit `beheer/`). Het script importeert daar
+  de controle van `wrangler.jsonc` vandaan.
+
+Daarna:
+
+```sh
+cd beheer
+pnpm install
+pnpm test
+```
+
+Buiten de proef zijn `--voorvoegsel` (of `BEHEER_VOORVOEGSEL`), `--repo` en `--wrangler`
+verplicht. Draait het script in GitHub Actions zonder `--repo`, dan stopt het: alleen de
+proef mag terugvallen op `GITHUB_REPOSITORY`. `--wrangler` wijst naar de
+`wrangler.jsonc` van de uitgecheckte app-repo. Bijvoorbeeld:
+
+```sh
+node beheer/inrichten-cloudflare.mjs --voorvoegsel rp- --app richplant \
+  --repo Richplant-BV/richplant-start --wrangler app/wrangler.jsonc --droogloop
+```
+
+`gh` gebruikt `GH_TOKEN`. In een beheer-repo is dat het kortlevende token van de GitHub
+App van de klant (`actions/create-github-app-token`), met rechten op secrets,
+variabelen, omgevingen en inhoud van de app-repo; zie
+`klant/.github/workflows/app-inrichten.yml` in stack-beheer.
 
 ## Lokaal testen
 

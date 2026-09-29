@@ -2,27 +2,51 @@
  * De Cloudflare-kant van de inrichting: herbruikbare Access-policies, de Access-apps
  * (deur, inlogdienst en de Worker zelf) en een paar gegevens van het account.
  *
- * Alles wat dit script maakt heeft een naam die begint met VOORVOEGSEL. Daaraan
+ * Alles wat dit script maakt heeft een naam die begint met het voorvoegsel (een
+ * verplichte instelling: `cf-proef-` voor de proef, `rp-` voor Richplant). Daaraan
  * herkent een volgende run wat van hem is (hergebruiken) en wat niet (afblijven), en
- * daaraan herkent --opruimen wat weg mag. Op dit account draaien ook KienIA-Workers en
- * de eigen apps van Stage Two; alles zonder voorvoegsel is van iemand anders.
+ * daaraan herkent --opruimen wat weg mag. Op hetzelfde account kunnen ook andere apps
+ * draaien; alles zonder dit voorvoegsel is van iemand anders.
  *
  * Veldnamen van de API: waar een naam uit maar één bron komt of nog niet tegen de
  * echte API is getest, staat `NAGAAN (U7)` erbij. De live doorsteek (U7) bevestigt ze.
  */
 import { vraag } from "./vraag.mjs";
 
-export const VOORVOEGSEL = "cf-proef-";
+/** Het voorvoegsel van de proef; alleen de proef mag terugvallen op de eigen repo. */
+export const PROEF_VOORVOEGSEL = "cf-proef-";
 export const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const PER_PAGINA = 100;
 
+/**
+ * Een voorvoegsel is een kleine letter, dan hoogstens vijftien kleine letters, cijfers
+ * of streepjes, en eindigt op een streepje. Daardoor is ook de hookfunctie die ervan
+ * afgeleid wordt (streepjes worden liggende streepjes) altijd veilig in SQL.
+ */
+const VOORVOEGSEL_PATROON = /^[a-z][a-z0-9-]{0,15}-$/;
+
+export function valideerVoorvoegsel(voorvoegsel) {
+  if (voorvoegsel === undefined || voorvoegsel === null || voorvoegsel === "") {
+    throw new Error(
+      "het voorvoegsel ontbreekt: geef --voorvoegsel <voorvoegsel> mee of zet BEHEER_VOORVOEGSEL (proef: cf-proef-, Richplant: rp-). Alles wat het script aanmaakt, hergebruikt of opruimt hangt eraan.",
+    );
+  }
+  if (typeof voorvoegsel !== "string" || !VOORVOEGSEL_PATROON.test(voorvoegsel)) {
+    throw new Error(
+      `het voorvoegsel "${voorvoegsel}" is ongeldig: een kleine letter, dan hoogstens vijftien kleine letters, cijfers of streepjes, en een streepje aan het eind (bijvoorbeeld rp-)`,
+    );
+  }
+  return voorvoegsel;
+}
+
 /** De namen van alles wat bij één app hoort. */
-export function appNamen(app) {
+export function appNamen(app, voorvoegsel) {
+  const vv = valideerVoorvoegsel(voorvoegsel);
   return {
-    deur: `${VOORVOEGSEL}${app}`,
-    inlog: `${VOORVOEGSEL}${app}-inlog`,
-    worker: `${VOORVOEGSEL}${app}-worker`,
-    project: `${VOORVOEGSEL}${app}`,
+    deur: `${vv}${app}`,
+    inlog: `${vv}${app}-inlog`,
+    worker: `${vv}${app}-worker`,
+    project: `${vv}${app}`,
   };
 }
 

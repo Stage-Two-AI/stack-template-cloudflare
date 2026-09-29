@@ -14,7 +14,7 @@
  * exclude-regels van díe policy. Meerdere policies op een app tellen als "of". De
  * beslissing hieronder (magAanmelden) en de SQL van het vangnet volgen precies dat.
  */
-import { appNamen, metPolicies, policyIdsVanApp, VOORVOEGSEL } from "./cloudflare.mjs";
+import { appNamen, metPolicies, policyIdsVanApp, valideerVoorvoegsel } from "./cloudflare.mjs";
 
 const VELDEN = ["domeinen", "adressen", "idp_groepen", "uitsluiten"];
 const GROEPNAAM = /^[a-z0-9][a-z0-9-]{0,40}$/;
@@ -103,9 +103,11 @@ export function valideerToegang(t) {
  * `gsuite.email`, `okta.name`, elk met `identity_provider_id`).
  *
  * `groepenIdp` is de gekoppelde identiteitsdienst voor `idp_groepen`, als
- * `{ type: "azureAD" | "gsuite" | "okta", id }` (CLOUDFLARE_GROEPEN_IDP).
+ * `{ type: "azureAD" | "gsuite" | "okta", id }` (CLOUDFLARE_GROEPEN_IDP). De naam van de
+ * policy is het voorvoegsel plus de groepsnaam.
  */
-export function policyVoorGroep(naam, groep, { groepenIdp } = {}) {
+export function policyVoorGroep(naam, groep, { groepenIdp, voorvoegsel } = {}) {
+  const vv = valideerVoorvoegsel(voorvoegsel);
   const include = [
     ...klein(groep.domeinen).map((domain) => ({ email_domain: { domain } })),
     ...klein(groep.adressen).map((email) => ({ email: { email } })),
@@ -130,7 +132,7 @@ export function policyVoorGroep(naam, groep, { groepenIdp } = {}) {
     include.push(...idpGroepen.map(regel));
   }
   return {
-    name: `${VOORVOEGSEL}${naam}`,
+    name: `${vv}${naam}`,
     decision: "allow",
     include,
     exclude: klein(groep.uitsluiten).map((email) => ({ email: { email } })),
@@ -157,10 +159,11 @@ function vergelijkbaar(p) {
 }
 
 /** Een policy zonder voorvoegsel met de naam van een groep: van iemand anders, dus stoppen. */
-export function kaleNaamConflicten(toegang, policies) {
+export function kaleNaamConflicten(toegang, policies, voorvoegsel) {
+  const vv = valideerVoorvoegsel(voorvoegsel);
   return Object.keys(toegang.groepen)
     .filter((g) => policies.some((p) => p.name === g))
-    .map((g) => `Access-policy "${g}" bestaat al zonder voorvoegsel ${VOORVOEGSEL}`);
+    .map((g) => `Access-policy "${g}" bestaat al zonder voorvoegsel ${vv}`);
 }
 
 /**
@@ -168,10 +171,14 @@ export function kaleNaamConflicten(toegang, policies) {
  * Verwijderen gebeurt apart (verwijderOverbodig), pas nadat de apps de oude policy
  * niet meer gebruiken; Cloudflare weigert een policy die nog gekoppeld is.
  */
-export async function synchroniseerPolicies(cf, toegang, { groepenIdp, bestaand } = {}) {
-  const gewenst = gewenstePolicies(toegang, { groepenIdp });
+export async function synchroniseerPolicies(
+  cf,
+  toegang,
+  { groepenIdp, bestaand, voorvoegsel } = {},
+) {
+  const gewenst = gewenstePolicies(toegang, { groepenIdp, voorvoegsel });
   const huidig = bestaand ?? (await cf.policies());
-  const conflicten = kaleNaamConflicten(toegang, huidig);
+  const conflicten = kaleNaamConflicten(toegang, huidig, voorvoegsel);
   if (conflicten.length) throw new Error(`gestopt zonder wijzigingen: ${conflicten.join("; ")}`);
 
   const ids = {};
@@ -191,7 +198,7 @@ export async function synchroniseerPolicies(cf, toegang, { groepenIdp, bestaand 
     }
   }
   const namen = new Set(gewenst.map((g) => g.body.name));
-  const overbodig = huidig.filter((p) => p.name?.startsWith(VOORVOEGSEL) && !namen.has(p.name));
+  const overbodig = huidig.filter((p) => p.name?.startsWith(voorvoegsel) && !namen.has(p.name));
   return { ids, acties, overbodig };
 }
 
@@ -213,11 +220,11 @@ export function policyIdsVoorApp(toegang, app, ids) {
  * Zet bij elke bestaande Access-app van elke app in het bestand de juiste policies.
  * Alleen waar de lijst anders is, wordt er geschreven.
  */
-export async function koppelPolicies(cf, toegang, apps, ids) {
+export async function koppelPolicies(cf, toegang, apps, ids, voorvoegsel) {
   const acties = [];
   for (const app of Object.keys(toegang.apps)) {
     const gewenst = policyIdsVoorApp(toegang, app, ids);
-    const namen = appNamen(app);
+    const namen = appNamen(app, voorvoegsel);
     for (const naam of [namen.deur, namen.inlog, namen.worker]) {
       const er = apps.find((a) => a.name === naam);
       if (!er) continue;
@@ -305,6 +312,15 @@ export const BAN_DUUR = "876000h";
 export const GEEN_BAN = "none";
 
 // ---------------------------------------------------------------- vangnet (R18)
+
+/**
+ * De naam van de hookfunctie van het vangnet, afgeleid van het voorvoegsel:
+ * `cf-proef-` wordt `cf_proef_voor_aanmelden`, `rp-` wordt `rp_voor_aanmelden`. Het
+ * patroon van het voorvoegsel zorgt dat er alleen `[a-z0-9_]` in staat.
+ */
+export function hookFunctie(voorvoegsel) {
+  return `${valideerVoorvoegsel(voorvoegsel).replaceAll("-", "_")}voor_aanmelden`;
+}
 
 /** Een tekst als SQL-literal: enkele aanhalingstekens verdubbeld. */
 export function sqlTekst(waarde) {

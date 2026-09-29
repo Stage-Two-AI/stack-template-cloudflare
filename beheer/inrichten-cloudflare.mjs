@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 /**
- * Richt één app in de Cloudflare-proef in, vanuit GitHub Actions (workflow
- * proef-inrichten): Cloudflare als deur en als inlogdienst, Supabase als database en
- * de koppeling daartussen. Zelfde patroon als `stack-beheer/klant/scripts/inrichten.mjs`.
+ * Richt één app in op Cloudflare, vanuit GitHub Actions (in de template: workflow
+ * proef-inrichten; bij een klant: de beheer-repo): Cloudflare als deur en als
+ * inlogdienst, Supabase als database en de koppeling daartussen. Zelfde patroon als
+ * `stack-beheer/klant/scripts/inrichten.mjs`.
  *
- *   node beheer/inrichten-cloudflare.mjs --app <naam> [--hostname <host>] [--repo <org/naam>]
+ *   node beheer/inrichten-cloudflare.mjs --voorvoegsel <vv-> --app <naam>
+ *        [--repo <org/naam>] [--wrangler <pad>] [--hostname <host>]
  *        [--droogloop | --opruimen | --vangnet | --tweede-doorgang | --toegang]
+ *
+ * Het voorvoegsel is verplicht (vlag of BEHEER_VOORVOEGSEL): `cf-proef-` voor de proef,
+ * `rp-` voor Richplant. Buiten de proef zijn ook `--repo` (de app-repo die de
+ * variabelen en secrets krijgt) en `--wrangler` (de wrangler.jsonc van die app, bij
+ * een uitgecheckte app-repo) verplicht. Alleen de proef valt terug op de eigen repo
+ * (GITHUB_REPOSITORY) en op wrangler.jsonc in de werkmap.
  *
  * Volgorde (plan U5, stap 3 en 4):
  *   3.1 Supabase-project (eu-central-1), wachten tot gezond, sleutels ophalen
@@ -21,14 +29,15 @@
  * `<worker>.<subdomein>.workers.dev`, vervalt stap 3.5 en is de Access op de Worker
  * (stap 4) de enige deur. site_url en de redirect-lijst wijzen dan naar dat adres.
  *
- * Elke stap is idempotent: wat al bestaat met het voorvoegsel `cf-proef-` wordt
+ * Elke stap is idempotent: wat al bestaat met het voorvoegsel wordt
  * hergebruikt, wat bestaat zónder voorvoegsel laat het script stoppen vóór er iets
  * gewijzigd is. De eigen-domeinroute beheert dit script niet; die staat in wrangler.jsonc.
  *
  * Omgeving (GitHub-omgeving proef-beheer, zie beheer/README.md):
  *   CLOUDFLARE_PROEF_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_TEAM_DOMAIN,
- *   SUPABASE_ACCESS_TOKEN, SUPABASE_ORG_SLUG, GH_TOKEN,
- *   optioneel CLOUDFLARE_IDP_IDS (komma's) en CLOUDFLARE_GROEPEN_IDP (<type>:<id>).
+ *   SUPABASE_ACCESS_TOKEN, SUPABASE_ORG_SLUG, GH_TOKEN (voor `gh`; in een beheer-repo
+ *   het kortlevende token van de GitHub App), optioneel BEHEER_VOORVOEGSEL,
+ *   CLOUDFLARE_IDP_IDS (komma's) en CLOUDFLARE_GROEPEN_IDP (<type>:<id>).
  *
  * Uitvoer: één regel `INRICHTING {json}`; geheimen staan er nooit in leesbaar in, en in
  * GitHub Actions worden ze ook met ::add-mask:: uit het logboek gehouden.
@@ -44,8 +53,9 @@ import {
   inlogApp,
   issuerVoor,
   metPolicies,
+  PROEF_VOORVOEGSEL,
   policyIdsVanApp,
-  VOORVOEGSEL,
+  valideerVoorvoegsel,
   workerApp,
 } from "./lib/cloudflare.mjs";
 import {
@@ -67,6 +77,7 @@ import {
   BAN_DUUR,
   GEEN_BAN,
   gewenstePolicies,
+  hookFunctie,
   kaleNaamConflicten,
   koppelPolicies,
   policyIdsVoorApp,
@@ -78,17 +89,40 @@ import {
 } from "./lib/toegang.mjs";
 
 export const OMGEVINGEN = ["production", "preview"];
-export const HOOK_FUNCTIE = `${VOORVOEGSEL.replaceAll("-", "_")}voor_aanmelden`;
+/**
+ * De databasesecrets staan in omgeving production (beperkt tot main), niet op de repo:
+ * een workflow op een PR-tak kan repo-secrets lezen. deploy-db.yml migreert daarom in
+ * die omgeving.
+ */
+export const SECRET_OMGEVING = "production";
 const GH_VARIABELEN = ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY", "VITE_INLOGDIENST"];
+/**
+ * De openbare waarden voor de PR-job in uitrollen.yml. Die job noemt geen omgeving
+ * (dan kan een PR nooit bij een sleutel), dus staan ze als repo-variabelen; ze komen
+ * toch in de bundel.
+ */
+const GH_PREVIEW_VARIABELEN = [
+  "PREVIEW_VITE_SUPABASE_URL",
+  "PREVIEW_VITE_SUPABASE_ANON_KEY",
+  "PREVIEW_VITE_SUPABASE_SCHEMA",
+  "PREVIEW_VITE_INLOGDIENST",
+];
 const GH_SECRETS = ["SUPABASE_PROJECT_REF", "SUPABASE_DB_PASSWORD"];
+const REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 
 // ---------------------------------------------------------------- argumenten
 
-export function leesArgumenten(argv) {
+/**
+ * Leest de argumenten. `env` levert BEHEER_VOORVOEGSEL en GITHUB_REPOSITORY; de vlaggen
+ * gaan voor. Alles wat niet klopt, stopt hier, vóór er iets gelezen of gewijzigd is.
+ */
+export function leesArgumenten(argv, env = {}) {
   const uit = {
     app: null,
     hostname: null,
     repo: null,
+    wrangler: null,
+    voorvoegsel: null,
     droogloop: false,
     opruimen: false,
     vangnet: false,
@@ -105,7 +139,7 @@ export function leesArgumenten(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (vlaggen[a]) uit[vlaggen[a]] = true;
-    else if (["--app", "--hostname", "--repo"].includes(a)) {
+    else if (["--app", "--hostname", "--repo", "--wrangler", "--voorvoegsel"].includes(a)) {
       const waarde = argv[i + 1];
       if (waarde === undefined || waarde.startsWith("--"))
         throw new Error(`${a} vraagt een waarde`);
@@ -124,6 +158,26 @@ export function leesArgumenten(argv) {
   }
   if (uit.hostname !== null && !/^[a-z0-9.-]+$/.test(uit.hostname))
     throw new Error("--hostname is ongeldig");
+  uit.voorvoegsel = valideerVoorvoegsel(uit.voorvoegsel ?? env.BEHEER_VOORVOEGSEL ?? null);
+  if (uit.repo !== null && !REPO.test(uit.repo)) {
+    throw new Error("--repo heeft de vorm <organisatie>/<naam>");
+  }
+  const proef = uit.voorvoegsel === PROEF_VOORVOEGSEL;
+  // --toegang werkt op alle apps uit toegang.json en raakt geen app-repo.
+  if (uit.repo === null && !uit.toegang) {
+    if (!proef) {
+      throw new Error(
+        `geef --repo <organisatie>/<naam> mee: alleen de proef (voorvoegsel ${PROEF_VOORVOEGSEL}) mag terugvallen op de eigen repo (GITHUB_REPOSITORY)`,
+      );
+    }
+    uit.repo = env.GITHUB_REPOSITORY || null;
+  }
+  const configNodig = !uit.opruimen && !uit.toegang;
+  if (uit.wrangler === null && configNodig && !proef) {
+    throw new Error(
+      "geef --wrangler <pad> mee: het pad naar wrangler.jsonc van de uitgecheckte app-repo (alleen de proef leest wrangler.jsonc in de werkmap)",
+    );
+  }
   return uit;
 }
 
@@ -178,8 +232,9 @@ async function verken(arg, d, { schrijven }) {
       "geen repo bekend voor de GitHub-variabelen; geef --repo mee of draai in GitHub Actions",
     );
   }
-  const gewenst = gewenstePolicies(t, { groepenIdp: d.groepenIdp });
-  const namen = appNamen(arg.app);
+  const vv = valideerVoorvoegsel(arg.voorvoegsel);
+  const gewenst = gewenstePolicies(t, { groepenIdp: d.groepenIdp, voorvoegsel: vv });
+  const namen = appNamen(arg.app, vv);
   const { cf, supabase } = d;
 
   const policies = await cf.policies();
@@ -191,23 +246,23 @@ async function verken(arg, d, { schrijven }) {
   // In de tijdelijke stand is het workers.dev-adres van de Worker het enige adres.
   const hostname = tijdelijk ? `${arg.worker}.${subdomein}.workers.dev` : arg.hostname;
 
-  const fouten = [...kaleNaamConflicten(t, policies)];
+  const fouten = [...kaleNaamConflicten(t, policies, vv)];
   for (const naam of [namen.deur, namen.inlog, namen.worker]) {
-    const kaal = naam.slice(VOORVOEGSEL.length);
+    const kaal = naam.slice(vv.length);
     if (apps.some((a) => a.name === kaal)) {
-      fouten.push(`Access-app "${kaal}" bestaat al zonder voorvoegsel ${VOORVOEGSEL}`);
+      fouten.push(`Access-app "${kaal}" bestaat al zonder voorvoegsel ${vv}`);
     }
   }
   const opHost = apps.find(
     (a) =>
-      !a.name?.startsWith(VOORVOEGSEL) &&
+      !a.name?.startsWith(vv) &&
       (a.domain === hostname || (a.destinations ?? []).some((x) => x.uri === hostname)),
   );
   if (opHost)
     fouten.push(`Access-app "${opHost.name}" (zonder voorvoegsel) bewaakt ${hostname} al`);
-  const kaalProject = namen.project.slice(VOORVOEGSEL.length);
+  const kaalProject = namen.project.slice(vv.length);
   if (projecten.some((p) => p.name === kaalProject)) {
-    fouten.push(`Supabase-project "${kaalProject}" bestaat al zonder voorvoegsel ${VOORVOEGSEL}`);
+    fouten.push(`Supabase-project "${kaalProject}" bestaat al zonder voorvoegsel ${vv}`);
   }
   if (fouten.length) throw new Error(`gestopt zonder wijzigingen: ${fouten.join("; ")}`);
 
@@ -236,42 +291,59 @@ function leesJsonLijst(tekst) {
   return Array.isArray(lijst) ? lijst : [];
 }
 
-/** De variabelen van één GitHub-omgeving, als `{ name, value }`. */
+/** `--env <omgeving>`, of niets voor de repo zelf (env === null). */
+function envArgs(env) {
+  return env ? ["--env", env] : [];
+}
+
+/** De variabelen van één GitHub-omgeving (of van de repo bij env null), als `{ name, value }`. */
 async function leesGhVariabelen(d, env, repo) {
   return leesJsonLijst(
-    await d.gh(["variable", "list", "--env", env, "--repo", repo, "--json", "name,value"]),
+    await d.gh(["variable", "list", ...envArgs(env), "--repo", repo, "--json", "name,value"]),
   );
 }
 
-/** De namen van de repo-secrets (de waarden geeft GitHub nooit terug). */
-async function leesGhSecretNamen(d, repo) {
-  return leesJsonLijst(await d.gh(["secret", "list", "--repo", repo, "--json", "name"])).map(
-    (s) => s.name,
-  );
+/** De namen van de secrets van een omgeving of de repo (de waarden geeft GitHub nooit terug). */
+async function leesGhSecretNamen(d, env, repo) {
+  return leesJsonLijst(
+    await d.gh(["secret", "list", ...envArgs(env), "--repo", repo, "--json", "name"]),
+  ).map((s) => s.name);
 }
 
-/** Zet variabelen per omgeving (alleen wat anders is) en repo-secrets via stdin. */
-async function zetGithub(d, repo, { variabelen, secrets = {} }) {
+async function zetVariabelen(d, env, repo, variabelen, gezet) {
+  const huidig = Object.fromEntries(
+    (await leesGhVariabelen(d, env, repo)).map((v) => [v.name, v.value]),
+  );
+  for (const [naam, waarde] of Object.entries(variabelen)) {
+    if (huidig[naam] === waarde) continue;
+    await d.gh(["variable", "set", naam, ...envArgs(env), "--repo", repo], { invoer: waarde });
+    gezet.push(`${env ?? "repo"}/${naam}`);
+  }
+}
+
+/**
+ * Zet variabelen per omgeving en op de repo (alleen wat anders is) en secrets in
+ * omgeving production, via stdin.
+ */
+async function zetGithub(d, repo, { variabelen = {}, repoVariabelen = {}, secrets = {} }) {
   const gezet = [];
-  for (const env of OMGEVINGEN) {
-    const huidig = Object.fromEntries(
-      (await leesGhVariabelen(d, env, repo)).map((v) => [v.name, v.value]),
-    );
-    for (const [naam, waarde] of Object.entries(variabelen)) {
-      if (huidig[naam] === waarde) continue;
-      await d.gh(["variable", "set", naam, "--env", env, "--repo", repo], { invoer: waarde });
-      gezet.push(`${env}/${naam}`);
-    }
+  if (Object.keys(variabelen).length) {
+    for (const env of OMGEVINGEN) await zetVariabelen(d, env, repo, variabelen, gezet);
+  }
+  if (Object.keys(repoVariabelen).length) {
+    await zetVariabelen(d, null, repo, repoVariabelen, gezet);
   }
   const namen = Object.keys(secrets);
   if (namen.length) {
-    const bestaand = await leesGhSecretNamen(d, repo);
+    const bestaand = await leesGhSecretNamen(d, SECRET_OMGEVING, repo);
     for (const naam of namen) {
       const { waarde, altijd } = secrets[naam];
       if (!waarde || (!altijd && bestaand.includes(naam))) continue;
       // Secrets gaan via stdin, nooit als argument: argumenten zijn zichtbaar in de proceslijst.
-      await d.gh(["secret", "set", naam, "--repo", repo], { invoer: waarde });
-      gezet.push(`secret ${naam}`);
+      await d.gh(["secret", "set", naam, "--env", SECRET_OMGEVING, "--repo", repo], {
+        invoer: waarde,
+      });
+      gezet.push(`${SECRET_OMGEVING}/secret ${naam}`);
     }
   }
   return gezet;
@@ -360,7 +432,7 @@ function geplandeStappen(arg, v, workerBestaat) {
     },
     {
       stap: "3.6 GitHub-variabelen en -secrets",
-      actie: `gepland: ${OMGEVINGEN.join(" en ")}, plus repo-secrets`,
+      actie: `gepland in ${arg.repo ?? "(geen repo)"}: variabelen in ${OMGEVINGEN.join(" en ")}, ${GH_PREVIEW_VARIABELEN.join(", ")} als repo-variabelen, secrets in omgeving ${SECRET_OMGEVING}`,
     },
     {
       stap: "4 Access op de Worker",
@@ -421,6 +493,7 @@ export async function richtIn(arg, d) {
   const sync = await synchroniseerPolicies(cf, v.t, {
     groepenIdp: d.groepenIdp,
     bestaand: v.policies,
+    voorvoegsel: arg.voorvoegsel,
   });
   stap("3.2 Access-policies", sync.acties.length ? sync.acties.join("; ") : "ongewijzigd");
   const policyIds = policyIdsVoorApp(v.t, arg.app, sync.ids);
@@ -486,6 +559,13 @@ export async function richtIn(arg, d) {
       VITE_SUPABASE_ANON_KEY: sleutels.anon,
       VITE_INLOGDIENST: "cloudflare",
       CLOUDFLARE_ACCOUNT_ID: d.accountId,
+    },
+    // De preview draait op hetzelfde project; een eigen database gebruikt schema public.
+    repoVariabelen: {
+      PREVIEW_VITE_SUPABASE_URL: supabaseUrl(project.ref),
+      PREVIEW_VITE_SUPABASE_ANON_KEY: sleutels.anon,
+      PREVIEW_VITE_SUPABASE_SCHEMA: "public",
+      PREVIEW_VITE_INLOGDIENST: "cloudflare",
     },
     // Het wachtwoord staat er al (direct na het aanmaken van het project); hier alleen
     // nog de project-ref voor een project dat al bestond.
@@ -556,32 +636,34 @@ export async function vangnet(arg, d) {
   const v = await verken(arg, d, { schrijven: !arg.droogloop });
   if (!v.project)
     throw new Error(`Supabase-project ${v.namen.project} bestaat niet; draai eerst de inrichting`);
-  const sql = vangnetSql(v.t, arg.app, HOOK_FUNCTIE);
+  const functie = hookFunctie(arg.voorvoegsel);
+  const sql = vangnetSql(v.t, arg.app, functie);
   const resultaat = {
     app: arg.app,
     supabase: { ref: v.project.ref },
-    hook: HOOK_FUNCTIE,
+    hook: functie,
     stappen: [],
   };
   if (arg.droogloop) {
     resultaat.stappen.push({
       stap: "vangnet",
-      actie: "gepland: hook-functie, auth-config, VITE_INLOGDIENST=mailcode",
+      actie:
+        "gepland: hook-functie, auth-config, VITE_INLOGDIENST en PREVIEW_VITE_INLOGDIENST=mailcode",
     });
     return resultaat;
   }
   await d.supabase.voerSqlUit(v.project.ref, sql);
-  resultaat.stappen.push({ stap: "hook-functie", actie: `public.${HOOK_FUNCTIE} gezet` });
-  const anders = verschil(
-    await d.supabase.authConfig(v.project.ref),
-    hookInstellingen(HOOK_FUNCTIE),
-  );
+  resultaat.stappen.push({ stap: "hook-functie", actie: `public.${functie} gezet` });
+  const anders = verschil(await d.supabase.authConfig(v.project.ref), hookInstellingen(functie));
   if (Object.keys(anders).length) await d.supabase.werkAuthBij(v.project.ref, anders);
   resultaat.stappen.push({
     stap: "auth-config",
     actie: Object.keys(anders).length ? "bijgewerkt" : "ongewijzigd",
   });
-  const gezet = await zetGithub(d, arg.repo, { variabelen: { VITE_INLOGDIENST: "mailcode" } });
+  const gezet = await zetGithub(d, arg.repo, {
+    variabelen: { VITE_INLOGDIENST: "mailcode" },
+    repoVariabelen: { PREVIEW_VITE_INLOGDIENST: "mailcode" },
+  });
   resultaat.stappen.push({
     stap: "GitHub",
     actie: gezet.length ? `gezet: ${gezet.join(", ")}` : "ongewijzigd",
@@ -597,10 +679,11 @@ export async function vangnet(arg, d) {
  * eigen-domeinroute horen bij wrangler en blijven ook staan; daar komt een waarschuwing.
  */
 export async function ruimOp(arg, d) {
+  const vv = valideerVoorvoegsel(arg.voorvoegsel);
   const { cf, supabase } = d;
-  const apps = (await cf.apps()).filter((a) => a.name?.startsWith(VOORVOEGSEL));
-  const policies = (await cf.policies()).filter((p) => p.name?.startsWith(VOORVOEGSEL));
-  const projecten = (await supabase.projecten()).filter((p) => p.name?.startsWith(VOORVOEGSEL));
+  const apps = (await cf.apps()).filter((a) => a.name?.startsWith(vv));
+  const policies = (await cf.policies()).filter((p) => p.name?.startsWith(vv));
+  const projecten = (await supabase.projecten()).filter((p) => p.name?.startsWith(vv));
   const workerApps = apps.filter((a) => a.name.endsWith("-worker"));
   const saasApps = apps.filter((a) => a.type === "saas");
   const deurApps = apps.filter((a) => !workerApps.includes(a) && !saasApps.includes(a));
@@ -622,10 +705,18 @@ export async function ruimOp(arg, d) {
         namen.push(`${env}/${naam}`);
       }
     }
-    const secrets = await leesGhSecretNamen(d, arg.repo);
-    for (const naam of GH_SECRETS.filter((n) => secrets.includes(n))) {
-      if (!droog) await d.gh(["secret", "delete", naam, "--repo", arg.repo]);
-      namen.push(`secret ${naam}`);
+    const repoVars = (await leesGhVariabelen(d, null, arg.repo)).map((x) => x.name);
+    for (const naam of GH_PREVIEW_VARIABELEN.filter((n) => repoVars.includes(n))) {
+      if (!droog) await d.gh(["variable", "delete", naam, "--repo", arg.repo]);
+      namen.push(`repo/${naam}`);
+    }
+    // De secrets in omgeving production, en een oud repo-secret van vóór die omgeving.
+    for (const env of [SECRET_OMGEVING, null]) {
+      const secrets = await leesGhSecretNamen(d, env, arg.repo);
+      for (const naam of GH_SECRETS.filter((n) => secrets.includes(n))) {
+        if (!droog) await d.gh(["secret", "delete", naam, ...envArgs(env), "--repo", arg.repo]);
+        namen.push(`${env ?? "repo"}/secret ${naam}`);
+      }
     }
     if (namen.length) verwijderd.push({ soort: "GitHub", naam: namen.join(", ") });
   }
@@ -671,35 +762,66 @@ export async function ruimOp(arg, d) {
 
 // ---------------------------------------------------------------- toegang bijwerken (U6)
 
+/** Staat het vangnet aan: wijst de before-user-created-hook naar onze functie? */
+async function vangnetAan(d, ref, voorvoegsel) {
+  const gewenst = hookInstellingen(hookFunctie(voorvoegsel));
+  const huidig = await d.supabase.authConfig(ref);
+  return (
+    huidig?.hook_before_user_created_enabled === true &&
+    huidig?.hook_before_user_created_uri === gewenst.hook_before_user_created_uri
+  );
+}
+
 /**
  * Maakt Cloudflare gelijk aan toegang.json en trekt daarna de toegang in van wie niet
  * meer past: ban en afmelden in het Supabase-project van elke app.
  */
 export async function werkToegangBij(arg, d) {
+  const vv = valideerVoorvoegsel(arg.voorvoegsel);
   const t = valideerToegang(d.toegang);
   const { cf, supabase } = d;
   const policies = await cf.policies();
   const apps = await cf.apps();
   const projecten = await supabase.projecten();
+  const doelApps = (arg.app ? [arg.app] : Object.keys(t.apps)).filter((app) => t.apps[app]);
+  const projectVan = (app) => projecten.find((p) => p.name === appNamen(app, vv).project);
   if (arg.droogloop) {
-    gewenstePolicies(t, { groepenIdp: d.groepenIdp });
-    const conflicten = kaleNaamConflicten(t, policies);
+    gewenstePolicies(t, { groepenIdp: d.groepenIdp, voorvoegsel: vv });
+    const conflicten = kaleNaamConflicten(t, policies, vv);
     if (conflicten.length) throw new Error(`gestopt zonder wijzigingen: ${conflicten.join("; ")}`);
+    const hooks = [];
+    for (const app of doelApps) {
+      const project = projectVan(app);
+      if (project && (await vangnetAan(d, project.ref, vv))) {
+        hooks.push(`gepland: aanmeld-hook van ${app} opnieuw schrijven (vangnet staat aan)`);
+      }
+    }
     return {
       droogloop: true,
-      acties: ["gepland: policies gelijkzetten, apps koppelen, intrekken"],
+      acties: ["gepland: policies gelijkzetten, apps koppelen, intrekken", ...hooks],
     };
   }
-  const sync = await synchroniseerPolicies(cf, t, { groepenIdp: d.groepenIdp, bestaand: policies });
-  const gekoppeld = await koppelPolicies(cf, t, apps, sync.ids);
+  const sync = await synchroniseerPolicies(cf, t, {
+    groepenIdp: d.groepenIdp,
+    bestaand: policies,
+    voorvoegsel: vv,
+  });
+  const gekoppeld = await koppelPolicies(cf, t, apps, sync.ids, vv);
 
   const ingetrokken = {};
   const toegelaten = {};
   const onbekend = {};
-  const doelApps = arg.app ? [arg.app] : Object.keys(t.apps);
+  const hooks = [];
   for (const app of doelApps) {
-    const project = projecten.find((p) => p.name === appNamen(app).project);
-    if (!project || !t.apps[app]) continue;
+    const project = projectVan(app);
+    if (!project) continue;
+    // Met het vangnet aan is de aanmeld-hook de poort: die moet het nieuwe bestand
+    // volgen, anders mag wie eruit is zich nog steeds aanmelden.
+    if (await vangnetAan(d, project.ref, vv)) {
+      const functie = hookFunctie(vv);
+      await supabase.voerSqlUit(project.ref, vangnetSql(t, app, functie));
+      hooks.push(`aanmeld-hook public.${functie} van ${app} bijgewerkt`);
+    }
     const sleutels = await supabase.sleutels(project.ref);
     d.maskeer?.(sleutels.serviceRole);
     const admin = (d.maakAdmin ?? standaardAdmin)(supabaseUrl(project.ref), sleutels.serviceRole);
@@ -731,7 +853,7 @@ export async function werkToegangBij(arg, d) {
     waarschuwingen.push(`overbodige policies niet verwijderd: ${fout.message}`);
   }
   return {
-    acties: [...sync.acties, ...gekoppeld, ...weg.map((n) => `policy ${n} verwijderd`)],
+    acties: [...sync.acties, ...gekoppeld, ...hooks, ...weg.map((n) => `policy ${n} verwijderd`)],
     ingetrokken,
     toegelaten,
     onbekend,
@@ -777,18 +899,18 @@ if (
   };
   let modus = "inrichten";
   try {
-    const arg = leesArgumenten(process.argv.slice(2));
+    const arg = leesArgumenten(process.argv.slice(2), process.env);
     modus = ["opruimen", "vangnet", "tweedeDoorgang", "toegang"].find((m) => arg[m]) ?? "inrichten";
     let config = null;
     try {
-      config = cloudflareConfig();
+      // Buiten de proef dwingt leesArgumenten --wrangler af; de proef leest zijn eigen.
+      config = cloudflareConfig(arg.wrangler ?? "wrangler.jsonc");
     } catch (fout) {
       if (!["opruimen", "toegang"].includes(modus)) throw fout;
     }
     arg.hostname ??= config?.hostname ?? null;
     arg.worker = config?.worker ?? null;
     arg.stand = config?.stand ?? null;
-    arg.repo ??= process.env.GITHUB_REPOSITORY ?? null;
     for (const naam of ["CLOUDFLARE_PROEF_TOKEN", "SUPABASE_ACCESS_TOKEN", "GH_TOKEN"])
       maskeer(process.env[naam]);
     const ghNodig = !arg.droogloop && ["inrichten", "vangnet", "opruimen"].includes(modus);

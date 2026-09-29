@@ -51,6 +51,6 @@ jobs:
           CLOUDFLARE_GROEPEN_IDP: ${{ vars.CLOUDFLARE_GROEPEN_IDP }}
           DROOGLOOP: ${{ inputs.droogloop }}
         run: |
-          args=(--toegang)
+          args=(--voorvoegsel cf-proef- --toegang)
           if [ "$DROOGLOOP" = "true" ]; then args+=(--droogloop); fi
           node beheer/inrichten-cloudflare.mjs "${args[@]}"

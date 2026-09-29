@@ -73,7 +73,9 @@ jobs:
           VANGNET: ${{ inputs.vangnet }}
           TWEEDE_DOORGANG: ${{ inputs.tweede_doorgang }}
         run: |
-          args=(--app "$APP")
+          # Het voorvoegsel is verplicht; cf-proef- is dat van de proef en de enige
+          # waarmee het script op deze repo (GITHUB_REPOSITORY) mag terugvallen.
+          args=(--voorvoegsel cf-proef- --app "$APP")
           if [ "$DROOGLOOP" = "true" ]; then args+=(--droogloop); fi
           if [ "$OPRUIMEN" = "true" ]; then args+=(--opruimen); fi
           if [ "$VANGNET" = "true" ]; then args+=(--vangnet); fi

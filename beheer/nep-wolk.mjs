@@ -37,7 +37,7 @@ export function nepWolk({
   gebruikers = [],
   providers = [],
   ghVariabelen = {},
-  ghSecrets = [],
+  ghSecrets = {},
   faal = () => null,
 } = {}) {
   const staat = {
@@ -49,7 +49,8 @@ export function nepWolk({
     providers: providers.map((p) => ({ ...p })),
     gebruikers: gebruikers.map((g) => ({ ...g })),
     ghVariabelen: structuredClone(ghVariabelen),
-    ghSecrets: [...ghSecrets],
+    // Secret-namen per omgeving; "repo" voor secrets op de repo zelf.
+    ghSecrets: structuredClone(ghSecrets),
     teller: 0,
   };
   const aanroepen = [];
@@ -229,7 +230,7 @@ export function nepWolk({
     };
   }
 
-  /** Een nagebootste `gh`-CLI: variabelen en secrets per omgeving of op de repo. */
+  /** Een nagebootste `gh`-CLI: variabelen en secrets per omgeving of op de repo ("repo"). */
   async function gh(args, { invoer } = {}) {
     aanroepen.push({ soort: "gh", methode: `gh ${args[0]} ${args[1]}`, args, invoer });
     const env = args.includes("--env") ? args[args.indexOf("--env") + 1] : "repo";
@@ -247,14 +248,15 @@ export function nepWolk({
       return "";
     }
     if (soort === "secret" && actie === "list") {
-      return JSON.stringify(staat.ghSecrets.map((name) => ({ name })));
+      return JSON.stringify((staat.ghSecrets[env] ?? []).map((name) => ({ name })));
     }
     if (soort === "secret" && actie === "set") {
-      if (!staat.ghSecrets.includes(naam)) staat.ghSecrets.push(naam);
+      staat.ghSecrets[env] ??= [];
+      if (!staat.ghSecrets[env].includes(naam)) staat.ghSecrets[env].push(naam);
       return "";
     }
     if (soort === "secret" && actie === "delete") {
-      staat.ghSecrets = staat.ghSecrets.filter((s) => s !== naam);
+      staat.ghSecrets[env] = (staat.ghSecrets[env] ?? []).filter((s) => s !== naam);
       return "";
     }
     throw new Error(`nep-gh kent ${args.join(" ")} niet`);
