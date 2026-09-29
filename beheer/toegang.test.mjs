@@ -88,11 +88,7 @@ test("vertaling: uitsluiten wordt een exclude-regel voor dat adres", () => {
 });
 
 test("vertaling: adressen worden e-mailregels", () => {
-  const p = policyVoorGroep(
-    "stagetwo",
-    { adressen: ["info@stagetwo.nl"] },
-    { voorvoegsel: VV },
-  );
+  const p = policyVoorGroep("stagetwo", { adressen: ["info@stagetwo.nl"] }, { voorvoegsel: VV });
   assert.deepEqual(p.include, [{ email: { email: "info@stagetwo.nl" } }]);
 });
 
