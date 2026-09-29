@@ -36,7 +36,7 @@ Doe het in deze volgorde. Na elke stap: uitkomst en bewijs in de tabel hieronder
    Stopt het script op een veldnaam van de API, zoek dan de plek met `NAGAAN (U7)` in
    `beheer/lib/` en stel hem bij (zie "Open API-punten").
 4. **Eerste uitrol.** Een lege commit of kleine wijziging via een PR naar `main` mergen.
-   De workflow `Uitrollen` zet de app op `cf-proef.stagetwo.nl`.
+   De workflow `Uitrollen` zet de app op `cf-proef.stagetwotemp.workers.dev` (tijdelijke stand; het domein stagetwo.nl staat in een ander Cloudflare-account).
 5. **Tweede doorgang.** `... -f tweede_doorgang=true`: Access op de Worker zelf, zodat ook
    de versie- en preview-adressen dicht zitten.
 6. **Tabel zonder grant (voor AE8).** In de SQL-editor van het proefproject:
@@ -44,13 +44,13 @@ Doe het in deze volgorde. Na elke stap: uitkomst en bewijs in de tabel hieronder
    Dit is bewust geen migratie: de template zelf eist RLS en grants op elke tabel.
 7. **Koppeltest (R16, voor finance).** Maak in het proefproject een bevestigde
    wachtwoordgebruiker aan met `aiwincoholland@gmail.com`, zoals in finance. Noteer zijn
-   `id`. Log daarna in via `https://cf-proef.stagetwo.nl` (AE1). Blijft het `id` van de
+   `id`. Log daarna in via `https://cf-proef.stagetwotemp.workers.dev` (AE1). Blijft het `id` van de
    ingelogde gebruiker gelijk en komt er geen tweede rij in `auth.users`, dan werkt de
    koppeling. Zo niet, dan is het antwoord voor finance "nee" tot dat is opgelost.
 8. **Geautomatiseerde controles.** Vanaf claudecode:
    ```sh
    SUPABASE_ANON_KEY=<anon> node beheer/controle-doorsteek.mjs \
-     --hostname cf-proef.stagetwo.nl --project-ref <ref> \
+     --hostname cf-proef.stagetwotemp.workers.dev --project-ref <ref> \
      --workers-dev https://cf-proef.<subdomein>.workers.dev/ \
      --versie-url <versie-adres van de huidige productieversie> \
      --preview-url <previewlink uit een PR>
