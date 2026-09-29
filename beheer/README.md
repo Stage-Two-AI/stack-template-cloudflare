@@ -92,11 +92,11 @@ PR-tak kan repo-secrets lezen, maar niet die van een omgeving die tot `main` bep
 rechten op alle projecten van de organisatie en blijft in de beheer-omgeving.
 
 De directe databaseverbinding (`db.<ref>.supabase.co`) is alleen via IPv6 bereikbaar, en
-de runners van GitHub hebben geen IPv6. Zet daarom in omgeving `production` de variabele
-`SUPABASE_POOLER_HOST` met de host van de session pooler (Supabase > Connect > Session
-pooler, bijvoorbeeld `aws-0-eu-central-1.pooler.supabase.com`). Dan migreert
-`deploy-db.yml` via de pooler, met gebruiker `postgres.<ref>`. Het script zet die
-variabele (nog) niet.
+de runners van GitHub hebben geen IPv6. De inrichting haalt daarom de host van de session
+pooler op bij Supabase en zet die als variabele `SUPABASE_POOLER_HOST` in `production` en
+`preview`. `deploy-db.yml` migreert dan via de pooler, met gebruiker `postgres.<ref>`.
+Geeft Supabase geen pooler terug, dan waarschuwt de inrichting en zet je hem met de hand
+(Supabase > Connect > Session pooler). Bewezen bij de doorsteek van 29-09.
 
 ## De workflows draaien
 
