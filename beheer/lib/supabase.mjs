@@ -54,6 +54,13 @@ export function authInstellingen({ hostname, worker, subdomein }) {
     site_url: `https://${hostname}`,
     uri_allow_list: uriAllowList({ hostname, worker, subdomein }).join(","),
     external_email_enabled: false,
+    // Cloudflare Access geeft een adres pas door na controle (mailcode of de IdP van de
+    // klant), maar zet geen email_verified in het id_token. Zonder autoconfirm weigert
+    // Supabase dan de inlog ("Unverified email with custom:cloudflare") en koppelt het de
+    // inlog niet aan een bestaande gebruiker met hetzelfde adres. email_verified via
+    // attribute_mapping kan niet ("protected system field"). Veilig, omdat inloggen met
+    // mail en wachtwoord hierboven uit staat. Gevonden bij de doorsteek, 29-09-2026.
+    mailer_autoconfirm: true,
   };
 }
 
@@ -160,15 +167,6 @@ function eisGeenFout(resultaat, actie) {
  * en bestaat de provider nog niet, dan kan dit niet en zegt het script wat te doen.
  * NAGAAN (U7): of `identifier` het voorvoegsel `custom:` zelf moet bevatten.
  */
-/**
- * Cloudflare Access geeft een mailadres pas door nadat het gecontroleerd is (mailcode of
- * de IdP van de klant), maar zet geen `email_verified` in het id_token. Zonder die claim
- * weigert Supabase de inlog ("Unverified email with custom:cloudflare") zodra er al een
- * gebruiker met dat adres bestaat. Een niet-tekstwaarde in `attribute_mapping` is een
- * vaste waarde (supabase/auth, applyAttributeMapping). Gevonden bij de doorsteek, 29-09.
- */
-export const ATTRIBUUT_MAPPING = { email_verified: true };
-
 export async function zetProvider(providers, { issuer, clientId, clientSecret }) {
   const lijst = eisGeenFout(await providers.listProviders(), "listProviders")?.providers ?? [];
   const bestaand = lijst.find((p) => p.identifier === PROVIDER);
@@ -188,7 +186,6 @@ export async function zetProvider(providers, { issuer, clientId, clientSecret })
         issuer,
         pkce_enabled: true,
         scopes: ["openid", "email", "profile"],
-        attribute_mapping: ATTRIBUUT_MAPPING,
         enabled: true,
       }),
       "createProvider",
@@ -198,15 +195,13 @@ export async function zetProvider(providers, { issuer, clientId, clientSecret })
   const zelfde =
     bestaand.issuer === issuer &&
     bestaand.client_id === clientId &&
-    bestaand.pkce_enabled !== false &&
-    bestaand.attribute_mapping?.email_verified === true;
+    bestaand.pkce_enabled !== false;
   if (zelfde && !clientSecret) return "ongewijzigd";
   eisGeenFout(
     await providers.updateProvider(PROVIDER, {
       issuer,
       client_id: clientId,
       pkce_enabled: true,
-      attribute_mapping: ATTRIBUUT_MAPPING,
       ...(clientSecret ? { client_secret: clientSecret } : {}),
     }),
     "updateProvider",
