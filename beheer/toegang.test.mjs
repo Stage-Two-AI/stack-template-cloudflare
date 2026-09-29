@@ -20,7 +20,7 @@ const VV = "cf-proef-";
 const KLANT = {
   groepen: {
     klant: { domeinen: ["klant.nl"], uitsluiten: ["jan@klant.nl"] },
-    stagetwo: { adressen: ["aiwincoholland@gmail.com"] },
+    stagetwo: { adressen: ["info@stagetwo.nl"] },
   },
   apps: { "cf-proef": ["klant", "stagetwo"] },
 };
@@ -30,7 +30,7 @@ const KLANT = {
 test("validatie: het proefbestand in de repo is geldig", () => {
   const t = JSON.parse(readFileSync(new URL("./toegang.json", import.meta.url), "utf8"));
   assert.deepEqual(valideerToegang(t).apps["cf-proef"], ["stagetwo"]);
-  assert.deepEqual(t.groepen.stagetwo.adressen, ["aiwincoholland@gmail.com"]);
+  assert.deepEqual(t.groepen.stagetwo.adressen, ["info@stagetwo.nl"]);
 });
 
 test("validatie: een app met een onbekende groep noemt app en groep", () => {
@@ -88,12 +88,8 @@ test("vertaling: uitsluiten wordt een exclude-regel voor dat adres", () => {
 });
 
 test("vertaling: adressen worden e-mailregels", () => {
-  const p = policyVoorGroep(
-    "stagetwo",
-    { adressen: ["aiwincoholland@gmail.com"] },
-    { voorvoegsel: VV },
-  );
-  assert.deepEqual(p.include, [{ email: { email: "aiwincoholland@gmail.com" } }]);
+  const p = policyVoorGroep("stagetwo", { adressen: ["info@stagetwo.nl"] }, { voorvoegsel: VV });
+  assert.deepEqual(p.include, [{ email: { email: "info@stagetwo.nl" } }]);
 });
 
 test("vertaling: idp_groepen zonder gekoppelde IdP geeft een duidelijke fout, geen lege regel (AE3)", () => {
@@ -393,7 +389,7 @@ test("vangnet: de SQL-functie laat alleen de gekozen domeinen en adressen door",
   const sql = vangnetSql(KLANT, "cf-proef", "cf_proef_voor_aanmelden");
   assert.match(sql, /create or replace function public\.cf_proef_voor_aanmelden\(event jsonb\)/);
   assert.match(sql, /domein = any \(array\['klant\.nl'\]::text\[\]\)/);
-  assert.match(sql, /adres = any \(array\['aiwincoholland@gmail\.com'\]::text\[\]\)/);
+  assert.match(sql, /adres = any \(array\['info@stagetwo\.nl'\]::text\[\]\)/);
   assert.match(sql, /not \(adres = any \(array\['jan@klant\.nl'\]::text\[\]\)\)/);
   assert.match(sql, /'http_code', 403/);
   assert.match(
