@@ -17,9 +17,11 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   },
-  // Geen *.workers.dev-adres naast het eigen domein (in de tijdelijke stand: true).
-  "workers_dev": false,
+  // Tijdelijke stand: nog geen eigen domein, dus alleen het workers.dev-adres, achter de
+  // Access op de Worker zelf. Komt er een domein: false, plus de route hieronder terug.
+  "workers_dev": true,
   // Previews per pull request. Access op de Worker zelf dekt ook deze adressen.
-  "preview_urls": true,
-  "routes": [{ "pattern": "cf-proef.stagetwo.nl", "custom_domain": true }]
+  "preview_urls": true
+  // Standaardstand, zodra er een eigen domein is:
+  // "routes": [{ "pattern": "<app>.<domein>", "custom_domain": true }]
 }
