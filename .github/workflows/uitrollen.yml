@@ -37,7 +37,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
         run: |
-          node -e "import('./scripts/lib/cloudflare-config.mjs').then((m) => m.cloudflareConfig())"
+          node scripts/guard-cloudflare.mjs
           modus=$(node -e "import('./scripts/lib/stack-config.mjs').then((m) => console.log(m.databaseModus()))")
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::notice::CLOUDFLARE_API_TOKEN ontbreekt in omgeving production. Uitrollen wordt overgeslagen."
@@ -95,7 +95,7 @@ jobs:
         env:
           PREVIEW_VITE_SUPABASE_URL: ${{ vars.PREVIEW_VITE_SUPABASE_URL }}
         run: |
-          node -e "import('./scripts/lib/cloudflare-config.mjs').then((m) => m.cloudflareConfig())"
+          node scripts/guard-cloudflare.mjs
           modus=$(node -e "import('./scripts/lib/stack-config.mjs').then((m) => console.log(m.databaseModus()))")
           if [ "$modus" != "geen" ] && [ -z "$PREVIEW_VITE_SUPABASE_URL" ]; then
             echo "::notice::De repo-variabele PREVIEW_VITE_SUPABASE_URL ontbreekt. De preview is nog niet ingericht; er komt geen preview voor deze PR."

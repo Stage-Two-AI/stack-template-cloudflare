@@ -106,6 +106,8 @@ jobs:
           POOLER: ${{ vars.SUPABASE_POOLER_HOST }}
         run: |
           ww=$(node -e 'process.stdout.write(encodeURIComponent(process.env.WACHTWOORD))')
+          # Het gecodeerde wachtwoord verschilt van het secret; ook dit afschermen in het log.
+          echo "::add-mask::$ww"
           if [ -n "$POOLER" ]; then
             DB_URL="postgresql://postgres.$PROJECT_REF:$ww@$POOLER:5432/postgres"
           else
@@ -123,6 +125,8 @@ jobs:
           POOLER: ${{ vars.SUPABASE_POOLER_HOST }}
         run: |
           ww=$(node -e 'process.stdout.write(encodeURIComponent(process.env.WACHTWOORD))')
+          # Het gecodeerde wachtwoord verschilt van het secret; ook dit afschermen in het log.
+          echo "::add-mask::$ww"
           if [ -n "$POOLER" ]; then
             DB_URL="postgresql://postgres.$PROJECT_REF:$ww@$POOLER:5432/postgres"
           else

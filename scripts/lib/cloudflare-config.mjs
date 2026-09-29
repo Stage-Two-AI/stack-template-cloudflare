@@ -97,11 +97,11 @@ function isObject(waarde) {
 }
 
 /** De meldingen voor elke sleutel die niet op de lijst staat, met het pad erbij. */
-function sleutelFouten(object, toegestaan, voorvoegsel) {
+function sleutelFouten(object, toegestaan, padVoorvoegsel) {
   const fouten = [];
   for (const sleutel of Object.keys(object)) {
     if (toegestaan.has(sleutel)) continue;
-    const pad = `\`${voorvoegsel}${sleutel}\``;
+    const pad = `\`${padVoorvoegsel}${sleutel}\``;
     if (sleutel === "main") {
       fouten.push(
         `${pad} hoort er niet in: deze stack serveert alleen de gebouwde bestanden, zonder Worker-code.`,

@@ -10,7 +10,7 @@ type Opties = {
   omgeving?: string;
 };
 
-export const GEEN_PERSOONSGEGEVENS = {
+const GEEN_PERSOONSGEGEVENS = {
   userInfo: false,
   cookies: false,
   httpHeaders: false,

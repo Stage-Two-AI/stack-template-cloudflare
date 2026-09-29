@@ -94,7 +94,7 @@ jobs:
       - name: Installeren (versie van main)
         if: steps.check.outputs.klaar == 'true'
         run: |
-          node -e "import('./scripts/lib/cloudflare-config.mjs').then((m) => m.cloudflareConfig())"
+          node scripts/guard-cloudflare.mjs
           pnpm install --frozen-lockfile
 
       # Pas na de installatie, en alleen naar dist/: niets uit de PR komt in node_modules,
