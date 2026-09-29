@@ -335,6 +335,114 @@ test("tweede doorgang met Worker: Access op workers.dev en alle preview-adressen
   assert.deepEqual(w.schrijfacties(), []);
 });
 
+// ---------------------------------------------------------------- tijdelijke stand (workers.dev)
+
+const TIJDELIJK = { ...ARG, hostname: null, stand: "tijdelijk" };
+const WORKERS_DEV = "cf-proef.stagetwo-acc.workers.dev";
+
+test("tijdelijke stand: alleen de Access op de Worker, geen app op een hostname", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const r = await richtIn(TIJDELIJK, opzet(w));
+  const selfHosted = w.staat.apps.filter((a) => a.type === "self_hosted");
+  assert.deepEqual(
+    selfHosted.map((a) => a.name),
+    ["cf-proef-cf-proef-worker"],
+    "geen deur op een hostname, wel Access op de Worker",
+  );
+  assert.deepEqual(selfHosted[0].destinations, [
+    { type: "public", uri: WORKERS_DEV },
+    { type: "public", uri: `*-${WORKERS_DEV}` },
+  ]);
+  const saas = w.staat.apps.find((a) => a.type === "saas");
+  assert.deepEqual(selfHosted[0].policies, saas.policies, "zelfde policies als de inlogdienst");
+  assert.equal(r.hostname, WORKERS_DEV);
+  assert.equal(r.cloudflare.deur, null);
+  assert.match(
+    r.stappen.find((s) => s.stap === "3.5 Access-app op de hostname").actie,
+    /overgeslagen: tijdelijke stand/,
+  );
+});
+
+test("tijdelijke stand: site_url en redirect-lijst op het workers.dev-adres plus het previewpatroon", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const r = await richtIn(TIJDELIJK, opzet(w));
+  const patch = w.aanroepen.find((a) => a.methode === "PATCH").body;
+  assert.equal(patch.site_url, `https://${WORKERS_DEV}`);
+  assert.equal(
+    patch.uri_allow_list,
+    `https://${WORKERS_DEV}/**,https://pr-*-cf-proef.stagetwo-acc.workers.dev/**`,
+  );
+  assert.deepEqual(r.uri_allow_list, patch.uri_allow_list.split(","));
+});
+
+test("tijdelijke stand: een tweede run verandert niets", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const d = opzet(w);
+  await richtIn(TIJDELIJK, d);
+  w.aanroepen.length = 0;
+  const r = await richtIn(TIJDELIJK, d);
+  assert.deepEqual(w.schrijfacties(), []);
+  assert.equal(w.staat.apps.length, 2, "inlogdienst en Worker-Access, verder niets");
+  assert.ok(
+    r.stappen.every((s) => /hergebruikt|ongewijzigd|overgeslagen: tijdelijke stand/.test(s.actie)),
+    JSON.stringify(r.stappen),
+  );
+});
+
+test("tijdelijke stand zonder uitrol: waarschuwt dat workers.dev tot de tweede doorgang open staat", async () => {
+  const w = nepWolk();
+  const r = await richtIn(TIJDELIJK, opzet(w));
+  assert.equal(w.staat.apps.filter((a) => a.type === "self_hosted").length, 0);
+  assert.ok(
+    r.waarschuwingen.some((x) => /--tweede-doorgang/.test(x) && x.includes(WORKERS_DEV)),
+    JSON.stringify(r.waarschuwingen),
+  );
+});
+
+test("tijdelijke stand: droogloop plant geen hostname-app en toont het workers.dev-adres", async () => {
+  const w = nepWolk();
+  const r = await richtIn({ ...TIJDELIJK, droogloop: true }, opzet(w));
+  assert.deepEqual(w.schrijfacties(), []);
+  assert.match(
+    r.stappen.find((s) => s.stap === "3.5 Access-app op de hostname").actie,
+    /overgeslagen: tijdelijke stand/,
+  );
+  assert.match(r.stappen.find((s) => s.stap === "3.4 auth-config").actie, /workers\.dev/);
+});
+
+test("tijdelijke stand: een --hostname erbij is een fout, want er is nog geen domein", async () => {
+  const w = nepWolk();
+  await assert.rejects(
+    () => richtIn({ ...TIJDELIJK, hostname: "app.klant.nl" }, opzet(w)),
+    /tijdelijke stand.*hostname/,
+  );
+  assert.deepEqual(w.schrijfacties(), []);
+});
+
+test("tijdelijke stand: een Access-app zonder voorvoegsel op het workers.dev-adres laat het script stoppen", async () => {
+  const w = nepWolk({
+    workerBestaat: true,
+    apps: [{ id: "a", name: "dashboardknop", type: "self_hosted", domain: WORKERS_DEV }],
+  });
+  await assert.rejects(() => richtIn(TIJDELIJK, opzet(w)), /gestopt zonder wijzigingen.*bewaakt/);
+  assert.deepEqual(w.schrijfacties(), []);
+});
+
+test("tijdelijke stand: tweede doorgang zet Access op de Worker", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(TIJDELIJK, d);
+  const w2 = nepWolk({ workerBestaat: true });
+  Object.assign(w2.staat, structuredClone(w.staat));
+  const d2 = opzet(w2);
+  const r = await tweedeDoorgang(TIJDELIJK, d2);
+  assert.equal(r.melding, "aangemaakt");
+  assert.deepEqual(
+    w2.staat.apps.filter((a) => a.type === "self_hosted").map((a) => a.domain),
+    [WORKERS_DEV],
+  );
+});
+
 // ---------------------------------------------------------------- vangnet
 
 test("--vangnet: e-mail weer aan en een hook die jan@elders.nl weigert en piet@klant.nl toelaat", async () => {

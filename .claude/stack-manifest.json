@@ -50,6 +50,7 @@
       "scripts/guard-secrets.mjs",
       "scripts/guard-escape-hatches.mjs",
       "scripts/guard-template.mjs",
+      "scripts/guard-cloudflare.mjs",
       "scripts/check-types-in-sync.mjs",
       "scripts/write-db-types.mjs",
       "scripts/write-local-env.mjs",

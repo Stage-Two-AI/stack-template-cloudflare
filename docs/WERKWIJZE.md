@@ -65,6 +65,27 @@ in het bestand dat de bezoeker downloadt.
 Twee checks bewaken dit automatisch: één die de repo doorzoekt, en één die de
 gebouwde bundel doorzoekt. Die tweede is de belangrijkste van allemaal.
 
+**Eén adres, en dat staat achter Access.** Cloudflare Access is de deur: wie niet op de
+lijst staat, ziet de app niet. Dat werkt alleen als er geen tweede adres is om omheen te
+gaan. `wrangler.jsonc` kent daarom twee standen, en `scripts/lib/cloudflare-config.mjs`
+weigert elke andere combinatie:
+
+| Stand | In `wrangler.jsonc` | Wanneer |
+|---|---|---|
+| standaard | een route met `custom_domain: true` en `workers_dev: false` | altijd, zodra de app een eigen domein heeft |
+| tijdelijk | geen `routes` en `workers_dev: true` | alleen zolang de klant nog geen domein heeft gekozen |
+
+In de tijdelijke stand draait de app op `<worker>.<subdomein>.workers.dev`. De inrichting
+zet dan Access op de Worker zelf, en die dekt dat adres en de preview-adressen; een
+Access-app op een hostname is er nog niet. Het is een overbrugging, geen keuze voor de
+lange termijn: is het domein er, dan gaat de app terug naar de standaardstand en gaat
+workers.dev weer uit. Dat overstappen doet Stage Two, met de inrichting in de beheer-repo.
+
+**Geen opslag bij Cloudflare.** Gegevens staan in Supabase. `wrangler.jsonc` mag alleen
+sleutels bevatten die op de lijst van `scripts/lib/cloudflare-config.mjs` staan, bovenaan
+en binnen elke `env.*`. D1, R2, KV, Durable Objects, eigen Worker-code (`main`) en elke
+onbekende sleutel houdt de check `guard:cloudflare` tegen, zodat zo'n PR niet kan mergen.
+
 ---
 
 ## 3. Databasewijzigingen lopen via GitHub

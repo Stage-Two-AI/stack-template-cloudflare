@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * test draait die controle zoals CI dat doet: als los Node-proces in een map.
  */
 const LIB = resolve(__dirname, "../../scripts/lib/cloudflare-config.mjs");
+const TEMPLATE = readFileSync(resolve(__dirname, "../../wrangler.jsonc"), "utf8");
 
 let map: string;
 
@@ -31,6 +32,15 @@ const GOED = {
   routes: [{ pattern: "cf-proef.stagetwo.nl", custom_domain: true }],
 };
 
+/** De tijdelijke stand: geen eigen domein, alleen het workers.dev-adres achter Access. */
+const TIJDELIJK = {
+  name: "cf-proef",
+  compatibility_date: "2026-09-01",
+  assets: { directory: "./dist", not_found_handling: "single-page-application" },
+  workers_dev: true,
+  preview_urls: true,
+};
+
 function schrijf(inhoud: string): void {
   writeFileSync(join(map, "wrangler.jsonc"), inhoud);
 }
@@ -41,60 +51,199 @@ function controleer(): { code: number | null; uitvoer: string } {
   return { code: r.status, uitvoer: `${r.stdout}${r.stderr}` };
 }
 
-describe("cloudflareConfig", () => {
-  it("geeft naam en hostname terug bij een goede config, ook met commentaar", () => {
+function controleerConfig(config: object): { code: number | null; uitvoer: string } {
+  schrijf(JSON.stringify(config));
+  return controleer();
+}
+
+describe("cloudflareConfig: de twee standen", () => {
+  it("geeft naam, stand en hostname terug bij een goede config, ook met commentaar", () => {
     schrijf(`// uitleg\n${JSON.stringify(GOED, null, 2)}`);
     const r = controleer();
     expect(r.code).toBe(0);
-    expect(JSON.parse(r.uitvoer)).toEqual({ worker: "cf-proef", hostname: "cf-proef.stagetwo.nl" });
+    expect(JSON.parse(r.uitvoer)).toEqual({
+      worker: "cf-proef",
+      stand: "standaard",
+      hostname: "cf-proef.stagetwo.nl",
+    });
   });
 
-  it("weigert workers_dev aan", () => {
-    schrijf(JSON.stringify({ ...GOED, workers_dev: true }));
-    const r = controleer();
+  it("accepteert de tijdelijke stand: workers_dev aan zonder routes", () => {
+    const r = controleerConfig(TIJDELIJK);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.uitvoer)).toEqual({
+      worker: "cf-proef",
+      stand: "tijdelijk",
+      hostname: null,
+    });
+  });
+
+  it("accepteert de tijdelijke stand ook met een lege lijst routes", () => {
+    const r = controleerConfig({ ...TIJDELIJK, routes: [] });
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.uitvoer).stand).toBe("tijdelijk");
+  });
+
+  it("weigert workers_dev aan naast een eigen domein, met een melding die beide standen noemt", () => {
+    const r = controleerConfig({ ...GOED, workers_dev: true });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("workers_dev");
+    expect(r.uitvoer).toContain("standaard");
+    expect(r.uitvoer).toContain("tijdelijk");
+  });
+
+  it("weigert workers_dev uit zonder routes: dan heeft de app geen adres", () => {
+    const r = controleerConfig({ ...GOED, routes: [] });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("custom_domain");
+    expect(r.uitvoer).toContain("standaard");
+    expect(r.uitvoer).toContain("tijdelijk");
+  });
+
+  it("weigert een config zonder workers_dev: wrangler zet het dan stilletjes aan", () => {
+    const { workers_dev: _weg, ...zonder } = GOED;
+    const r = controleerConfig(zonder);
     expect(r.code).not.toBe(0);
     expect(r.uitvoer).toContain("workers_dev");
   });
 
-  it("weigert een config zonder single-page-application", () => {
-    schrijf(JSON.stringify({ ...GOED, assets: { directory: "./dist" } }));
-    const r = controleer();
-    expect(r.code).not.toBe(0);
-    expect(r.uitvoer).toContain("single-page-application");
-  });
-
-  it("weigert een Worker-script naast de bestanden", () => {
-    schrijf(JSON.stringify({ ...GOED, main: "src/worker.ts" }));
-    const r = controleer();
-    expect(r.code).not.toBe(0);
-    expect(r.uitvoer).toContain("main");
-  });
-
-  it("weigert opslag van Cloudflare zelf", () => {
-    schrijf(JSON.stringify({ ...GOED, kv_namespaces: [{ binding: "X", id: "y" }] }));
-    const r = controleer();
-    expect(r.code).not.toBe(0);
-    expect(r.uitvoer).toContain("kv_namespaces");
-  });
-
-  it("weigert een config zonder eigen domein", () => {
-    schrijf(JSON.stringify({ ...GOED, routes: [] }));
-    const r = controleer();
+  it("weigert een route zonder custom_domain in de standaardstand", () => {
+    const r = controleerConfig({ ...GOED, routes: [{ pattern: "cf-proef.stagetwo.nl/*" }] });
     expect(r.code).not.toBe(0);
     expect(r.uitvoer).toContain("custom_domain");
   });
 
+  it("weigert een config zonder single-page-application", () => {
+    const r = controleerConfig({ ...GOED, assets: { directory: "./dist" } });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("single-page-application");
+  });
+
   it("keurt de wrangler.jsonc van deze repo zelf goed", () => {
-    writeFileSync(
-      join(map, "wrangler.jsonc"),
-      readFileSync(resolve(__dirname, "../../wrangler.jsonc"), "utf8"),
-    );
+    schrijf(TEMPLATE);
     expect(controleer().code).toBe(0);
+  });
+
+  it("keurt de wrangler.jsonc van deze repo goed in de tijdelijke stand", () => {
+    // Alleen de sleutelregels, niet het commentaar dat beide standen uitlegt.
+    const tijdelijk = TEMPLATE.replace(
+      /^(\s*)"workers_dev": false/m,
+      '$1"workers_dev": true',
+    ).replace(/^\s*"routes":.*$/m, "");
+    expect(tijdelijk).toMatch(/^\s*"workers_dev": true/m);
+    expect(tijdelijk).not.toMatch(/^\s*"routes":/m);
+    schrijf(tijdelijk);
+    const r = controleer();
+    expect(r.code, r.uitvoer).toBe(0);
+    expect(JSON.parse(r.uitvoer).stand).toBe("tijdelijk");
   });
 
   it("meldt duidelijk dat het bestand ontbreekt", () => {
     const r = controleer();
     expect(r.code).not.toBe(0);
     expect(r.uitvoer).toContain("wrangler.jsonc");
+  });
+
+  it("meldt duidelijk dat het bestand geen geldige JSON is", () => {
+    schrijf("{ name: ");
+    const r = controleer();
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("wrangler.jsonc");
+    expect(r.uitvoer).toContain("JSON");
+  });
+});
+
+describe("cloudflareConfig: alleen toegestane sleutels (geen opslag van Cloudflare)", () => {
+  for (const sleutel of ["d1_databases", "r2_buckets", "kv_namespaces"]) {
+    it(`weigert ${sleutel} op het hoogste niveau`, () => {
+      const r = controleerConfig({ ...GOED, [sleutel]: [{ binding: "X", id: "y" }] });
+      expect(r.code).not.toBe(0);
+      expect(r.uitvoer).toContain(sleutel);
+      expect(r.uitvoer).toContain("gegevens staan in Supabase");
+    });
+
+    it(`weigert ${sleutel} binnen env.production`, () => {
+      const r = controleerConfig({
+        ...GOED,
+        env: { production: { [sleutel]: [{ binding: "X", id: "y" }] } },
+      });
+      expect(r.code).not.toBe(0);
+      expect(r.uitvoer).toContain(`env.production.${sleutel}`);
+      expect(r.uitvoer).toContain("gegevens staan in Supabase");
+    });
+  }
+
+  it("weigert durable_objects op het hoogste niveau en binnen env.*", () => {
+    const binding = { bindings: [{ name: "X", class_name: "Y" }] };
+    const boven = controleerConfig({ ...GOED, durable_objects: binding });
+    expect(boven.code).not.toBe(0);
+    expect(boven.uitvoer).toContain("durable_objects");
+    const inEnv = controleerConfig({ ...GOED, env: { preview: { durable_objects: binding } } });
+    expect(inEnv.code).not.toBe(0);
+    expect(inEnv.uitvoer).toContain("env.preview.durable_objects");
+  });
+
+  it("weigert main op het hoogste niveau en binnen env.*", () => {
+    const boven = controleerConfig({ ...GOED, main: "src/worker.ts" });
+    expect(boven.code).not.toBe(0);
+    expect(boven.uitvoer).toContain("main");
+    expect(boven.uitvoer).toContain("Worker-code");
+    const inEnv = controleerConfig({ ...GOED, env: { production: { main: "src/worker.ts" } } });
+    expect(inEnv.code).not.toBe(0);
+    expect(inEnv.uitvoer).toContain("env.production.main");
+  });
+
+  it("weigert een onbekende nieuwe sleutel, met een nette melding", () => {
+    const r = controleerConfig({
+      ...GOED,
+      containers: [{ class_name: "X", image: "./Dockerfile" }],
+    });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("`containers`");
+    expect(r.uitvoer).toContain("staat niet op de lijst");
+  });
+
+  it("weigert een onbekende sleutel binnen env.*", () => {
+    const r = controleerConfig({ ...GOED, env: { production: { queues: {} } } });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("env.production.queues");
+  });
+
+  it("noemt alle verboden sleutels in één keer", () => {
+    const r = controleerConfig({
+      ...GOED,
+      kv_namespaces: [],
+      containers: [],
+      env: { production: { r2_buckets: [] } },
+    });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("kv_namespaces");
+    expect(r.uitvoer).toContain("containers");
+    expect(r.uitvoer).toContain("env.production.r2_buckets");
+  });
+
+  it("weigert een env die geen object is", () => {
+    const r = controleerConfig({ ...GOED, env: { production: "ja" } });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("env.production");
+  });
+
+  it("laat de bekende onschuldige sleutels door, ook binnen env.*", () => {
+    const r = controleerConfig({
+      $schema: "node_modules/wrangler/config-schema.json",
+      ...GOED,
+      compatibility_flags: ["nodejs_compat"],
+      observability: { enabled: true },
+      vars: { OMGEVING: "productie" },
+      keep_vars: false,
+      env: {
+        production: {
+          compatibility_flags: ["nodejs_compat"],
+          observability: { enabled: true },
+          vars: { OMGEVING: "productie" },
+        },
+      },
+    });
+    expect(r.code, r.uitvoer).toBe(0);
   });
 });

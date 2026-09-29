@@ -76,6 +76,12 @@ jobs:
       - name: Guard - bestanden van de gedeelde template
         run: pnpm guard:template
 
+      # Geen opslag van Cloudflare (D1, R2, KV, Durable Objects) en alleen toegestane
+      # sleutels in wrangler.jsonc. Staat in deze job, en dus in de verplichte check
+      # "Code": een PR die om opslag vraagt kan niet mergen.
+      - name: Guard - geen opslag van Cloudflare
+        run: pnpm guard:cloudflare
+
   # Alles wat een echte database nodig heeft. Draait tegen een lokale Supabase,
   # dus zonder sleutels van een cloudomgeving en zonder iets aan te raken wat leeft.
   #

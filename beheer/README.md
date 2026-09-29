@@ -29,6 +29,11 @@ voordat het iets wijzigt.
   in `~/.cloudflare-proef.env` en als secret in de GitHub-omgeving `proef-beheer`.
   Daarnaast twee smalle sleutels met alleen Workers Scripts bewerken: één als
   `CLOUDFLARE_API_TOKEN` in omgeving `production`, één in omgeving `preview`.
+  Geen van deze sleutels krijgt een D1-, R2- of KV-groep (Workers KV Storage, Workers
+  R2 Storage, D1): dan kan er geen opslag bij Cloudflare ontstaan, ook niet als iemand
+  `guard:cloudflare` omzeilt. Durable Objects vallen onder Workers Scripts en worden
+  alleen door die check tegengehouden. Zonder eigen domein (tijdelijke stand in
+  `wrangler.jsonc`) is de zone-regel van Workers Routes en DNS niet nodig.
 - **P3.** Bevestigen dat er in de Supabase-organisatie "Stage Two" ruimte is voor één
   actief project naast finance.
 - **P4.** In omgeving `proef-beheer` de secrets `SUPABASE_ACCESS_TOKEN` (Management API),

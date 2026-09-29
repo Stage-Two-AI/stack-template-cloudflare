@@ -31,6 +31,9 @@ export function callbackAdres(ref) {
  * De adressen waar Supabase na het inloggen naar terug mag. Het account-subdomein komt
  * uit de API en is nooit een wildcard: `https://pr-*-app.*.workers.dev` zou elke Worker
  * van elk account toelaten, en daarmee een token naar een vreemde site sturen.
+ *
+ * `hostname` is het eigen domein, of in de tijdelijke stand van wrangler.jsonc het
+ * workers.dev-adres van de Worker (`<worker>.<subdomein>.workers.dev`).
  */
 export function uriAllowList({ hostname, worker, subdomein }) {
   if (!subdomein || !/^[a-z0-9-]+$/i.test(subdomein)) {

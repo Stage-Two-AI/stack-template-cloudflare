@@ -7,15 +7,41 @@ import { readFileSync } from "node:fs";
  *
  *   - alleen de gebouwde bestanden, geen eigen Worker-code (`main`);
  *   - diepe links vallen terug op index.html (`single-page-application`);
- *   - geen `*.workers.dev`-adres naast het eigen domein (`workers_dev: false`);
- *   - een eigen domein (`custom_domain`), zodat Cloudflare Access ervoor kan staan;
- *   - geen opslag van Cloudflare zelf: gegevens horen in Supabase.
+ *   - precies één adres, en dat staat achter Access. Er zijn twee standen:
+ *       standaard: een eigen domein (`routes` met `custom_domain: true`) en
+ *                  `workers_dev: false`, zodat er geen tweede adres naast staat;
+ *       tijdelijk: geen `routes` en `workers_dev: true`, zolang de klant nog geen
+ *                  domein heeft. Access op de Worker zelf (zie `beheer/`) is dan de deur.
+ *   - alleen sleutels van de lijst hieronder, op het hoogste niveau en binnen elke
+ *     `env.*`. Zo komt er geen opslag van Cloudflare in (D1, R2, KV, Durable Objects,
+ *     of wat Cloudflare er later bij verzint): gegevens horen in Supabase.
  *
  * `preview_urls` staat aan voor de previews per pull request. Dat geldt voor de hele
  * Worker, dus ook voor elke productieversie; daarom zet de inrichting Access op de
  * Worker zelf (zie `beheer/`).
  */
-const OPSLAG = [
+const TOEGESTAAN = new Set([
+  "$schema",
+  "name",
+  "compatibility_date",
+  "compatibility_flags",
+  "assets",
+  "routes",
+  "workers_dev",
+  "preview_urls",
+  "observability",
+  "vars",
+  "keep_vars",
+  "env",
+]);
+
+/** Binnen `env.<naam>` dezelfde lijst, zonder de sleutels die alleen bovenaan horen. */
+const TOEGESTAAN_IN_ENV = new Set(
+  [...TOEGESTAAN].filter((sleutel) => !["$schema", "env"].includes(sleutel)),
+);
+
+/** Bekende opslag van Cloudflare zelf; die krijgt een eigen, duidelijke melding. */
+const OPSLAG = new Set([
   "kv_namespaces",
   "d1_databases",
   "r2_buckets",
@@ -23,7 +49,14 @@ const OPSLAG = [
   "queues",
   "vectorize",
   "hyperdrive",
-];
+  "workflows",
+  "analytics_engine_datasets",
+  "secrets_store_secrets",
+]);
+
+const STANDEN =
+  "Er zijn twee standen: de standaardstand (een route met `custom_domain: true` en `workers_dev: false`) " +
+  "en de tijdelijke stand, alleen zolang er nog geen eigen domein is (geen `routes` en `workers_dev: true`).";
 
 /** JSON met `//`- en `/* *\/`-commentaar, zoals wrangler.jsonc dat toestaat. */
 function leesJsonc(tekst) {
@@ -59,42 +92,96 @@ function fout(melding) {
   throw new Error(`wrangler.jsonc: ${melding}`);
 }
 
-/** Leest en controleert wrangler.jsonc; geeft de Worker-naam en het eigen domein terug. */
+function isObject(waarde) {
+  return typeof waarde === "object" && waarde !== null && !Array.isArray(waarde);
+}
+
+/** De meldingen voor elke sleutel die niet op de lijst staat, met het pad erbij. */
+function sleutelFouten(object, toegestaan, voorvoegsel) {
+  const fouten = [];
+  for (const sleutel of Object.keys(object)) {
+    if (toegestaan.has(sleutel)) continue;
+    const pad = `\`${voorvoegsel}${sleutel}\``;
+    if (sleutel === "main") {
+      fouten.push(
+        `${pad} hoort er niet in: deze stack serveert alleen de gebouwde bestanden, zonder Worker-code.`,
+      );
+    } else if (OPSLAG.has(sleutel)) {
+      fouten.push(`${pad} hoort er niet in: gegevens staan in Supabase, niet bij Cloudflare.`);
+    } else {
+      fouten.push(
+        `${pad} staat niet op de lijst van toegestane sleutels. Deze stack serveert alleen de gebouwde bestanden en gegevens staan in Supabase; is deze sleutel echt nodig, meld het dan bij Stage Two.`,
+      );
+    }
+  }
+  return fouten;
+}
+
+/**
+ * Leest en controleert wrangler.jsonc. Geeft de Worker-naam en de stand terug, en in de
+ * standaardstand het eigen domein (in de tijdelijke stand is `hostname` null: het
+ * workers.dev-adres hangt af van het subdomein van het account).
+ */
 export function cloudflareConfig(pad = "wrangler.jsonc") {
   let tekst;
   try {
     tekst = readFileSync(pad, "utf8");
-  } catch {
+  } catch (oorzaak) {
+    const ontbreekt = oorzaak?.code === "ENOENT";
     fout(
-      `het bestand ${pad} ontbreekt. Elke app in deze stack draait op Cloudflare en heeft het nodig.`,
+      ontbreekt
+        ? `het bestand ${pad} ontbreekt. Elke app in deze stack draait op Cloudflare en heeft het nodig.`
+        : `het bestand ${pad} is niet te lezen (${oorzaak?.code ?? oorzaak?.message}).`,
     );
   }
-  const config = leesJsonc(tekst);
+  let config;
+  try {
+    config = leesJsonc(tekst);
+  } catch (oorzaak) {
+    fout(`het bestand ${pad} is geen geldige JSON: ${oorzaak?.message}`);
+  }
+  if (!isObject(config)) fout("het bestand hoort één object te bevatten.");
 
   if (typeof config.name !== "string" || config.name === "") fout("`name` ontbreekt.");
-  if (config.main !== undefined) {
-    fout(
-      "`main` hoort er niet in: deze stack serveert alleen de gebouwde bestanden, zonder Worker-code.",
-    );
+
+  const fouten = sleutelFouten(config, TOEGESTAAN, "");
+  if (config.env !== undefined) {
+    if (!isObject(config.env)) fouten.push("`env` hoort een object met omgevingen te zijn.");
+    else {
+      for (const [naam, omgeving] of Object.entries(config.env)) {
+        if (!isObject(omgeving)) fouten.push(`\`env.${naam}\` hoort een object te zijn.`);
+        else fouten.push(...sleutelFouten(omgeving, TOEGESTAAN_IN_ENV, `env.${naam}.`));
+      }
+    }
   }
+  if (fouten.length) fout(fouten.join("\n  "));
+
   if (config.assets?.not_found_handling !== "single-page-application") {
     fout(
       '`assets.not_found_handling` moet "single-page-application" zijn, anders werken diepe links niet.',
     );
   }
+
+  const routes = config.routes ?? [];
+  if (!Array.isArray(routes)) fout("`routes` hoort een lijst te zijn.");
+  if (config.workers_dev === true) {
+    if (routes.length > 0) {
+      fout(
+        `\`workers_dev\` staat aan naast \`routes\`: dan heeft de app twee adressen. ${STANDEN}`,
+      );
+    }
+    return { worker: config.name, stand: "tijdelijk", hostname: null };
+  }
   if (config.workers_dev !== false) {
     fout(
-      "`workers_dev` moet false zijn: de app hoort alleen op het eigen domein achter Access te staan.",
+      `\`workers_dev\` ontbreekt; zonder die regel zet wrangler het workers.dev-adres aan. ${STANDEN}`,
     );
   }
-  for (const sleutel of OPSLAG) {
-    if (config[sleutel] !== undefined) {
-      fout(`\`${sleutel}\` hoort er niet in: gegevens staan in Supabase, niet bij Cloudflare.`);
-    }
-  }
-  const domein = (config.routes ?? []).find((r) => r?.custom_domain === true);
+  const domein = routes.find((r) => r?.custom_domain === true);
   if (!domein?.pattern) {
-    fout("er staat geen route met `custom_domain: true` in; de app heeft een eigen domein nodig.");
+    fout(
+      `er staat geen route met \`custom_domain: true\` in, dus de app heeft geen adres. ${STANDEN}`,
+    );
   }
-  return { worker: config.name, hostname: domein.pattern };
+  return { worker: config.name, stand: "standaard", hostname: domein.pattern };
 }

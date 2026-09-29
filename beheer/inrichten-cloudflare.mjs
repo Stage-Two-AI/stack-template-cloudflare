@@ -16,6 +16,11 @@
  *   3.6 GitHub-variabelen en -secrets per omgeving
  *   4   Access op de Worker zelf; slaat over zolang er nog niet is uitgerold
  *
+ * In de tijdelijke stand van wrangler.jsonc (`workers_dev: true`, geen routes; zie
+ * scripts/lib/cloudflare-config.mjs) is er nog geen eigen domein. Dan is het adres
+ * `<worker>.<subdomein>.workers.dev`, vervalt stap 3.5 en is de Access op de Worker
+ * (stap 4) de enige deur. site_url en de redirect-lijst wijzen dan naar dat adres.
+ *
  * Elke stap is idempotent: wat al bestaat met het voorvoegsel `cf-proef-` wordt
  * hergebruikt, wat bestaat zónder voorvoegsel laat het script stoppen vóór er iets
  * gewijzigd is. De eigen-domeinroute beheert dit script niet; die staat in wrangler.jsonc.
@@ -158,7 +163,13 @@ async function verken(arg, d, { schrijven }) {
       `app "${arg.app}" staat niet in beheer/toegang.json; voeg hem toe met minstens één groep`,
     );
   }
-  if (!/^[a-z0-9.-]+$/.test(arg.hostname ?? ""))
+  const tijdelijk = arg.stand === "tijdelijk";
+  if (tijdelijk && arg.hostname) {
+    throw new Error(
+      "in de tijdelijke stand (workers.dev) is er nog geen eigen domein; laat --hostname weg, of zet wrangler.jsonc eerst in de standaardstand",
+    );
+  }
+  if (!tijdelijk && !/^[a-z0-9.-]+$/.test(arg.hostname ?? ""))
     throw new Error("de hostname ontbreekt of is ongeldig");
   if (!/^[a-z0-9-]+$/.test(arg.worker ?? ""))
     throw new Error("de Worker-naam ontbreekt (wrangler.jsonc)");
@@ -177,6 +188,8 @@ async function verken(arg, d, { schrijven }) {
   const idps = await kiesIdps(d);
   const subdomein = await cf.workersSubdomein();
   const team = await cf.teamDomein();
+  // In de tijdelijke stand is het workers.dev-adres van de Worker het enige adres.
+  const hostname = tijdelijk ? `${arg.worker}.${subdomein}.workers.dev` : arg.hostname;
 
   const fouten = [...kaleNaamConflicten(t, policies)];
   for (const naam of [namen.deur, namen.inlog, namen.worker]) {
@@ -188,10 +201,10 @@ async function verken(arg, d, { schrijven }) {
   const opHost = apps.find(
     (a) =>
       !a.name?.startsWith(VOORVOEGSEL) &&
-      (a.domain === arg.hostname || (a.destinations ?? []).some((x) => x.uri === arg.hostname)),
+      (a.domain === hostname || (a.destinations ?? []).some((x) => x.uri === hostname)),
   );
   if (opHost)
-    fouten.push(`Access-app "${opHost.name}" (zonder voorvoegsel) bewaakt ${arg.hostname} al`);
+    fouten.push(`Access-app "${opHost.name}" (zonder voorvoegsel) bewaakt ${hostname} al`);
   const kaalProject = namen.project.slice(VOORVOEGSEL.length);
   if (projecten.some((p) => p.name === kaalProject)) {
     fouten.push(`Supabase-project "${kaalProject}" bestaat al zonder voorvoegsel ${VOORVOEGSEL}`);
@@ -207,6 +220,8 @@ async function verken(arg, d, { schrijven }) {
     idps,
     subdomein,
     team,
+    hostname,
+    tijdelijk,
     project: projecten.find((p) => p.name === namen.project) ?? null,
     deur: apps.find((a) => a.name === namen.deur) ?? null,
     inlog: apps.find((a) => a.name === namen.inlog) ?? null,
@@ -317,6 +332,8 @@ async function stapWorker(arg, d, v, policyIds) {
 
 // ---------------------------------------------------------------- de inrichting
 
+const GEEN_DEUR = "overgeslagen: tijdelijke stand (workers.dev), de Access op de Worker is de deur";
+
 function geplandeStappen(arg, v, workerBestaat) {
   const bestaat = (x, tekst) => (x ? `bestaat al (${x.id ?? x.ref})` : `gepland: ${tekst}`);
   const policiesErAl = v.gewenst.every((g) => v.policies.some((p) => p.name === g.body.name));
@@ -335,11 +352,11 @@ function geplandeStappen(arg, v, workerBestaat) {
     { stap: "3.3 custom provider custom:cloudflare", actie: "gepland: aanmaken of gelijkzetten" },
     {
       stap: "3.4 auth-config",
-      actie: `gepland: site_url https://${arg.hostname}, redirects ${uriAllowList({ hostname: arg.hostname, worker: arg.worker, subdomein: v.subdomein }).join(" ")}, e-mail-inlog uit`,
+      actie: `gepland: site_url https://${v.hostname}, redirects ${uriAllowList({ hostname: v.hostname, worker: arg.worker, subdomein: v.subdomein }).join(" ")}, e-mail-inlog uit`,
     },
     {
       stap: "3.5 Access-app op de hostname",
-      actie: bestaat(v.deur, `${v.namen.deur} op ${arg.hostname}`),
+      actie: v.tijdelijk ? GEEN_DEUR : bestaat(v.deur, `${v.namen.deur} op ${v.hostname}`),
     },
     {
       stap: "3.6 GitHub-variabelen en -secrets",
@@ -364,7 +381,7 @@ export async function richtIn(arg, d) {
   const v = await verken(arg, d, { schrijven: !arg.droogloop });
   const resultaat = {
     app: arg.app,
-    hostname: arg.hostname,
+    hostname: v.hostname,
     droogloop: Boolean(arg.droogloop),
     stappen: [],
     waarschuwingen: [],
@@ -438,7 +455,7 @@ export async function richtIn(arg, d) {
 
   // 3.4 auth-config
   const gewenstAuth = authInstellingen({
-    hostname: arg.hostname,
+    hostname: v.hostname,
     worker: arg.worker,
     subdomein: v.subdomein,
   });
@@ -449,11 +466,12 @@ export async function richtIn(arg, d) {
   } else stap("3.4 auth-config", "ongewijzigd");
   resultaat.uri_allow_list = gewenstAuth.uri_allow_list.split(",");
 
-  // 3.5 de deur
+  // 3.5 de deur; in de tijdelijke stand is er geen hostname en is stap 4 de deur
   let deur = v.deur;
-  if (!deur) {
+  if (v.tijdelijk) stap("3.5 Access-app op de hostname", GEEN_DEUR);
+  else if (!deur) {
     deur = await cf.maakApp(
-      deurApp({ naam: v.namen.deur, hostname: arg.hostname, policyIds, idps: v.idps }),
+      deurApp({ naam: v.namen.deur, hostname: v.hostname, policyIds, idps: v.idps }),
     );
     stap("3.5 Access-app op de hostname", `aangemaakt (${deur.id})`);
   } else if (JSON.stringify(policyIdsVanApp(deur)) !== JSON.stringify(policyIds)) {
@@ -488,11 +506,21 @@ export async function richtIn(arg, d) {
   // 4 Access op de Worker (tweede doorgang, slaat over zolang er niet is uitgerold)
   const w = await stapWorker(arg, d, v, policyIds);
   stap(w.stap, w.actie);
+  if (v.tijdelijk && !w.id) {
+    resultaat.waarschuwingen.push(
+      `tijdelijke stand: ${v.hostname} heeft nog geen Access, want de Worker is nog niet uitgerold; draai direct na de eerste uitrol --tweede-doorgang`,
+    );
+  }
 
   const weg = await verwijderOverbodig(cf, sync.overbodig);
   if (weg.length) stap("3.2 Access-policies", `overbodig verwijderd: ${weg.join(", ")}`);
 
-  resultaat.cloudflare = { policies: sync.ids, inlog: inlog.id, deur: deur.id, worker: w.id };
+  resultaat.cloudflare = {
+    policies: sync.ids,
+    inlog: inlog.id,
+    deur: v.tijdelijk ? null : deur.id,
+    worker: w.id,
+  };
   return resultaat;
 }
 
@@ -759,6 +787,7 @@ if (
     }
     arg.hostname ??= config?.hostname ?? null;
     arg.worker = config?.worker ?? null;
+    arg.stand = config?.stand ?? null;
     arg.repo ??= process.env.GITHUB_REPOSITORY ?? null;
     for (const naam of ["CLOUDFLARE_PROEF_TOKEN", "SUPABASE_ACCESS_TOKEN", "GH_TOKEN"])
       maskeer(process.env[naam]);

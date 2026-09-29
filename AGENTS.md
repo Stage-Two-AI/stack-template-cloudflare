@@ -110,7 +110,12 @@ docs/solutions/        gedocumenteerde oplossingen van eerdere problemen (bugs, 
   vaste tijden iets doen, dan is dat het signaal om `database` om te zetten (Supabase,
   met Storage voor bestanden en `pg_cron` voor terugkerende taken). Gebruik nooit
   opslag van Cloudflare zelf (D1, KV, R2, Durable Objects): Cloudflare serveert alleen
-  de app en regelt de toegang.
+  de app en regelt de toegang. `guard:cloudflare` laat alleen de sleutels in
+  `wrangler.jsonc` door die op de lijst staan en blokkeert de rest.
+- **De app heeft één adres, en dat staat achter Access.** Normaal is dat het eigen domein
+  (`routes` met `custom_domain: true`, `workers_dev: false`). Alleen zolang de klant nog
+  geen domein heeft, mag de tijdelijke stand: geen `routes` en `workers_dev: true`. Zet
+  die stand niet op eigen houtje aan of uit; `docs/WERKWIJZE.md` zegt wanneer hij mag.
 - **Wie code wijzigt, wijzigt ook een test.** Bugfix? Eerst een test die de bug
   reproduceert, dan de reparatie.
 - **Eén PR = één onderwerp.** Beschrijf wat je gewijzigd hebt en waarom.

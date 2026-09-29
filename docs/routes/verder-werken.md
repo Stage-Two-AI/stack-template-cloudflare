@@ -107,6 +107,7 @@ meld dan wat er nog mist.
 | `guard:rls` | er is een tabel zonder beveiliging |
 | `guard:migrations` | je migratie kan data vernietigen; lees de melding en bevestig bewust |
 | `guard:template` | je wijzigde een bestand van de gedeelde template. Draai het terug en meld het bij Stage Two; wil je de nieuwste versie van de template, dan is dat `/stack:bijwerken` |
+| `guard:cloudflare` | `wrangler.jsonc` vraagt om opslag van Cloudflare (D1, R2, KV, Durable Objects), Worker-code of een sleutel die niet op de lijst staat. Gegevens horen in Supabase: haal de sleutel weg |
 | `db:types:check` | de gegenereerde types lopen achter. `pnpm db:types` en committen |
 
 Een rode check omzeilen door hem uit te zetten is nooit het antwoord. De check is
