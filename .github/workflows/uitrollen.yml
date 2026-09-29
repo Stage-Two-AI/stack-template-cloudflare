@@ -68,6 +68,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_SUPABASE_SCHEMA: ${{ vars.VITE_SUPABASE_SCHEMA }}
           VITE_INLOGDIENST: ${{ vars.VITE_INLOGDIENST }}
+          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
         run: pnpm build
 
       - name: Uitrollen naar Cloudflare

@@ -53,10 +53,31 @@ describe("lege waarden", () => {
       VITE_SUPABASE_SCHEMA: "",
       VITE_OMGEVING: "",
       VITE_INLOGDIENST: "",
+      VITE_SENTRY_DSN: "",
     });
     expect(uitkomst.success).toBe(true);
     expect(uitkomst.data?.VITE_SUPABASE_SCHEMA).toBe("public");
     expect(uitkomst.data?.VITE_INLOGDIENST).toBe("wachtwoord");
     expect(uitkomst.data?.VITE_OMGEVING).toBeUndefined();
+    expect(uitkomst.data?.VITE_SENTRY_DSN).toBeUndefined();
+  });
+});
+
+describe("VITE_SENTRY_DSN", () => {
+  it("is standaard niet gezet, en dan staat Sentry uit", () => {
+    expect(env.VITE_SENTRY_DSN).toBeUndefined();
+  });
+
+  it("neemt een DSN over zoals hij is", async () => {
+    const { envSchema } = await import("./env");
+    const dsn = "https://abc123@o1.ingest.de.sentry.io/42";
+    const uitkomst = envSchema.safeParse({ VITE_SENTRY_DSN: dsn });
+    expect(uitkomst.success).toBe(true);
+    expect(uitkomst.data?.VITE_SENTRY_DSN).toBe(dsn);
+  });
+
+  it("laat een ongeldige DSN door; fouten.ts vangt die af, zodat de app niet crasht", async () => {
+    const { envSchema } = await import("./env");
+    expect(envSchema.safeParse({ VITE_SENTRY_DSN: "geen-dsn" }).success).toBe(true);
   });
 });

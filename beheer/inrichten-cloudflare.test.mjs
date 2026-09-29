@@ -943,3 +943,45 @@ test("pooler: zonder session pooler van Supabase stopt de inrichting niet, maar 
   assert.equal(w.staat.ghVariabelen.production.SUPABASE_POOLER_HOST, undefined);
   assert.ok(r.waarschuwingen.some((x) => x.includes("SUPABASE_POOLER_HOST")));
 });
+
+// ---------------------------------------------------------------- Sentry
+
+test("Sentry: met VITE_SENTRY_DSN in de beheeromgeving komt de DSN in beide omgevingen en als PREVIEW_", async () => {
+  const w = nepWolk();
+  const dsn = "https://abc123@o1.ingest.de.sentry.io/42";
+  await richtIn(ARG, opzet(w, { sentryDsn: dsn }));
+  for (const env of ["production", "preview"]) {
+    assert.equal(w.staat.ghVariabelen[env].VITE_SENTRY_DSN, dsn);
+  }
+  assert.equal(w.staat.ghVariabelen.repo.PREVIEW_VITE_SENTRY_DSN, dsn);
+});
+
+test("Sentry: zonder (of met een lege) VITE_SENTRY_DSN zet de inrichting niets voor Sentry", async () => {
+  for (const sentryDsn of [undefined, ""]) {
+    const w = nepWolk();
+    await richtIn(ARG, opzet(w, { sentryDsn }));
+    for (const env of ["production", "preview"]) {
+      assert.equal(w.staat.ghVariabelen[env].VITE_SENTRY_DSN, undefined);
+    }
+    assert.equal(w.staat.ghVariabelen.repo.PREVIEW_VITE_SENTRY_DSN, undefined);
+    const namen = w.aanroepen.filter((a) => a.soort === "gh").map((a) => a.args.join(" "));
+    assert.ok(
+      namen.every((n) => !n.includes("SENTRY")),
+      "geen gh-aanroep over Sentry",
+    );
+  }
+});
+
+test("Sentry: opruimen haalt VITE_SENTRY_DSN en PREVIEW_VITE_SENTRY_DSN weg", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const d = opzet(w, { sentryDsn: "https://abc123@o1.ingest.sentry.io/42" });
+  await richtIn(ARG, d);
+  const r = await ruimOp({ ...ARG }, d);
+  for (const env of ["production", "preview"]) {
+    assert.equal(w.staat.ghVariabelen[env].VITE_SENTRY_DSN, undefined);
+  }
+  assert.equal(w.staat.ghVariabelen.repo.PREVIEW_VITE_SENTRY_DSN, undefined);
+  const github = r.verwijderd.find((v) => v.soort === "GitHub");
+  assert.match(JSON.stringify(github), /production\/VITE_SENTRY_DSN/);
+  assert.match(JSON.stringify(github), /repo\/PREVIEW_VITE_SENTRY_DSN/);
+});

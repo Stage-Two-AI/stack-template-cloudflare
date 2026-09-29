@@ -48,6 +48,12 @@ const velden = z
      * uitrol hem op `cloudflare`.
      */
     VITE_INLOGDIENST: z.enum(INLOGDIENSTEN).default("wachtwoord"),
+    /**
+     * Waar fouten uit de app naartoe gaan (Sentry). Leeg of afwezig: Sentry staat uit.
+     * Een DSN is publiek, hij staat toch in de bundel. Bewust geen URL-controle: een
+     * verkeerde DSN mag de app niet laten crashen; src/lib/fouten.ts vangt die af.
+     */
+    VITE_SENTRY_DSN: z.string().optional(),
   })
   .superRefine((waarden, ctx) => {
     const url = Boolean(waarden.VITE_SUPABASE_URL);

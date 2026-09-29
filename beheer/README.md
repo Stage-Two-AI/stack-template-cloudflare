@@ -59,6 +59,7 @@ Verder in omgeving `proef-beheer`, als variabelen (geen secrets):
 | `CLOUDFLARE_TEAM_DOMAIN` | de teamnaam uit P1, bijvoorbeeld `stagetwo` of `stagetwo.cloudflareaccess.com` |
 | `CLOUDFLARE_IDP_IDS` | optioneel: id's van de toegestane inlogmethoden, met komma's. Leeg = alleen one-time PIN |
 | `CLOUDFLARE_GROEPEN_IDP` | optioneel: `azureAD:<id>` als een groep `idp_groepen` gebruikt |
+| `VITE_SENTRY_DSN` | optioneel: zet hier de DSN van het Sentry-project om Sentry in de app aan te zetten; de inrichting zet hem dan als `VITE_SENTRY_DSN` in `production` en `preview` en als `PREVIEW_VITE_SENTRY_DSN` op de repo. Leeg = Sentry uit |
 
 Beperk de omgevingen `proef-beheer`, `production` en `preview` tot de tak `main`
 (Settings > Environments > Deployment branches). Dat kan ook voor `preview`, omdat de
@@ -71,13 +72,13 @@ Wat de inrichting in de app-repo zet:
 
 | Waar | Wat |
 |---|---|
-| omgevingen `production` en `preview`, variabelen | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INLOGDIENST`, `CLOUDFLARE_ACCOUNT_ID` |
-| repo-variabelen | `PREVIEW_VITE_SUPABASE_URL`, `PREVIEW_VITE_SUPABASE_ANON_KEY`, `PREVIEW_VITE_SUPABASE_SCHEMA` (`public`), `PREVIEW_VITE_INLOGDIENST` |
+| omgevingen `production` en `preview`, variabelen | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INLOGDIENST`, `CLOUDFLARE_ACCOUNT_ID`, en `VITE_SENTRY_DSN` als de beheeromgeving die heeft |
+| repo-variabelen | `PREVIEW_VITE_SUPABASE_URL`, `PREVIEW_VITE_SUPABASE_ANON_KEY`, `PREVIEW_VITE_SUPABASE_SCHEMA` (`public`), `PREVIEW_VITE_INLOGDIENST`, en `PREVIEW_VITE_SENTRY_DSN` als de beheeromgeving `VITE_SENTRY_DSN` heeft |
 | omgeving `production`, secrets | `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD` |
 
 De PR-job in `uitrollen.yml` noemt geen omgeving en leest daarom de `PREVIEW_`-
 repovariabelen (geen secrets, ze staan toch in de bundel). `PREVIEW_VITE_SENTRY_DSN` zet
-het script niet; die is optioneel. Ontbreekt `PREVIEW_VITE_SUPABASE_URL` bij een app met
+het script alleen met een `VITE_SENTRY_DSN` in de beheeromgeving. Ontbreekt `PREVIEW_VITE_SUPABASE_URL` bij een app met
 database, dan meldt de PR-job dat en komt er geen preview.
 
 De databasesecrets staan in omgeving `production`, niet op de repo: een workflow op een

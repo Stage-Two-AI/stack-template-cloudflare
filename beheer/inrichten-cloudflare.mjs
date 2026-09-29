@@ -100,6 +100,7 @@ const GH_VARIABELEN = [
   "VITE_SUPABASE_ANON_KEY",
   "VITE_INLOGDIENST",
   "SUPABASE_POOLER_HOST",
+  "VITE_SENTRY_DSN",
 ];
 /**
  * De openbare waarden voor de PR-job in uitrollen.yml. Die job noemt geen omgeving
@@ -111,6 +112,7 @@ const GH_PREVIEW_VARIABELEN = [
   "PREVIEW_VITE_SUPABASE_ANON_KEY",
   "PREVIEW_VITE_SUPABASE_SCHEMA",
   "PREVIEW_VITE_INLOGDIENST",
+  "PREVIEW_VITE_SENTRY_DSN",
 ];
 const GH_SECRETS = ["SUPABASE_PROJECT_REF", "SUPABASE_DB_PASSWORD"];
 const REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
@@ -571,6 +573,8 @@ export async function richtIn(arg, d) {
       VITE_INLOGDIENST: "cloudflare",
       CLOUDFLARE_ACCOUNT_ID: d.accountId,
       ...(pooler ? { SUPABASE_POOLER_HOST: pooler } : {}),
+      // Sentry staat alleen aan als de beheeromgeving een DSN heeft; anders niets.
+      ...(d.sentryDsn ? { VITE_SENTRY_DSN: d.sentryDsn } : {}),
     },
     // De preview draait op hetzelfde project; een eigen database gebruikt schema public.
     repoVariabelen: {
@@ -578,6 +582,7 @@ export async function richtIn(arg, d) {
       PREVIEW_VITE_SUPABASE_ANON_KEY: sleutels.anon,
       PREVIEW_VITE_SUPABASE_SCHEMA: "public",
       PREVIEW_VITE_INLOGDIENST: "cloudflare",
+      ...(d.sentryDsn ? { PREVIEW_VITE_SENTRY_DSN: d.sentryDsn } : {}),
     },
     // Het wachtwoord staat er al (direct na het aanmaken van het project); hier alleen
     // nog de project-ref voor een project dat al bestond.
@@ -946,6 +951,8 @@ if (
         .map((x) => x.trim())
         .filter(Boolean),
       groepenIdp: leesGroepenIdp(process.env.CLOUDFLARE_GROEPEN_IDP),
+      // Optioneel: met een DSN zet de inrichting Sentry aan (zie beheer/README.md).
+      sentryDsn: process.env.VITE_SENTRY_DSN?.trim() || undefined,
       maskeer,
     };
     const uitvoeren = {
