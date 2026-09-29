@@ -20,6 +20,20 @@ P1 tot en met P4 uit `beheer/README.md` ontbreken nog:
 Dus: **nog geen ja of nee op de keten Cloudflare naar Supabase.** Dat blijft de
 belangrijkste open vraag van de proef.
 
+## Stand op 29-09-2026
+
+- Voorwaarden P1 tot en met P4 zijn rond, op het nieuwe Cloudflare-account van Stage Two
+  (teamnaam `stagetwo`, workers.dev-subdomein `stagetwotemp`). Sleutels met de nieuwe
+  Workers-rechten (Editor, alle Workers) werken.
+- Droogloop en inrichting zijn geslaagd. Supabase aanvaardt Access for SaaS als
+  `custom:cloudflare`. Het pooler-adres komt automatisch uit de Management API.
+- Gevonden: een net aangemaakte SaaS-app geeft een paar minuten 404 op het
+  discovery-adres ("Application is not an OIDC application"). De inrichting wacht daar
+  nu op (PR #5).
+- Koppeltest voorbereid: wachtwoordgebruiker `aiwincoholland@gmail.com` met id
+  `6bff3fe7-2eff-4c80-a566-faaa3990ef4d` in project `jdglffjwhkjbpyrwecbm`.
+- Deze merge is de eerste uitrol (stap 4).
+
 ## Draaiboek
 
 Doe het in deze volgorde. Na elke stap: uitkomst en bewijs in de tabel hieronder.
