@@ -17,6 +17,7 @@ import {
 } from "./lib/cloudflare.mjs";
 import { supabaseBeheer, uriAllowList } from "./lib/supabase.mjs";
 import { magAanmelden } from "./lib/toegang.mjs";
+import { vraag } from "./lib/vraag.mjs";
 import { nepWolk } from "./nep-wolk.mjs";
 
 const TOEGANG = {
@@ -179,8 +180,8 @@ test("droogloop: maakt niets aan en toont de volledige lijst geplande stappen", 
       "3.3 custom provider custom:cloudflare",
       "3.4 auth-config",
       "3.5 Access-app op de hostname",
-      "3.6 GitHub-variabelen en -secrets",
       "4 Access op de Worker",
+      "3.6 GitHub-variabelen en -secrets",
     ],
   );
   assert.ok(r.stappen.every((s) => /gepland|bestaat al|nog niet uitgerold/.test(s.actie)));
@@ -209,7 +210,10 @@ test("volledige run: de schrijfacties volgen de volgorde van het ontwerp", async
     schrijf.slice(8).every((s) => s.startsWith("gh ")),
     "daarna alleen nog GitHub",
   );
-  assert.equal(r.stappen.at(-1).actie, "overgeslagen: nog niet uitgerold");
+  assert.equal(
+    r.stappen.find((s) => s.stap === "4 Access op de Worker").actie,
+    "overgeslagen: nog niet uitgerold",
+  );
   assert.equal(r.supabase.ref, ref);
   assert.equal(r.issuer, "https://stagetwo.cloudflareaccess.com/cdn-cgi/access/sso/oidc/cid-3");
 });
@@ -470,7 +474,9 @@ test("tweede run met alles al aanwezig maakt niets dubbel aan", async () => {
   assert.equal(w.staat.policies.length, 1);
   assert.equal(w.staat.providers.length, 1);
   assert.ok(
-    r.stappen.slice(0, 7).every((s) => /hergebruikt|ongewijzigd/.test(s.actie)),
+    r.stappen
+      .filter((s) => s.stap !== "4 Access op de Worker")
+      .every((s) => /hergebruikt|ongewijzigd/.test(s.actie)),
     JSON.stringify(r.stappen),
   );
 });
@@ -632,13 +638,60 @@ test("tijdelijke stand: een tweede run verandert niets", async () => {
   );
 });
 
-test("tijdelijke stand zonder uitrol: waarschuwt dat workers.dev tot de tweede doorgang open staat", async () => {
+test("tijdelijke stand zonder uitrol: eerst placeholder, dan Access, pas daarna de GitHub-variabelen", async () => {
   const w = nepWolk();
   const r = await richtIn(TIJDELIJK, opzet(w));
-  assert.equal(w.staat.apps.filter((a) => a.type === "self_hosted").length, 0);
+  const schrijf = w.schrijfacties();
+  const placeholder = schrijf.indexOf("PUT cf/workers/scripts/cf-proef");
+  const subdomein = schrijf.indexOf("POST cf/workers/scripts/cf-proef/subdomain");
+  const access = schrijf.indexOf("POST cf/access/apps self_hosted");
+  const eersteVariabele = schrijf.findIndex((s) => s.startsWith("gh variable set"));
+  assert.ok(placeholder >= 0, JSON.stringify(schrijf));
+  assert.ok(placeholder < subdomein, "eerst het script, dan workers.dev aan");
+  assert.ok(subdomein < access, "de Access pas als de Worker er staat");
+  assert.ok(access < eersteVariabele, "de Access staat er vóór GitHub de uitrol mogelijk maakt");
+  const worker = w.staat.apps.find((a) => a.name === "cf-proef-cf-proef-worker");
+  assert.equal(worker.domain, WORKERS_DEV);
+  assert.equal(r.cloudflare.worker, worker.id);
+  assert.match(r.stappen.find((s) => s.stap === "4 Access op de Worker").actie, /placeholder/);
   assert.ok(
-    r.waarschuwingen.some((x) => /--tweede-doorgang/.test(x) && x.includes(WORKERS_DEV)),
+    !r.waarschuwingen.some((x) => /tweede-doorgang/.test(x)),
     JSON.stringify(r.waarschuwingen),
+  );
+  const put = w.aanroepen.find((a) => a.methode === "PUT" && a.pad?.endsWith("/scripts/cf-proef"));
+  assert.ok(put.body instanceof FormData, "het script gaat als multipart");
+  const sub = w.aanroepen.find((a) => a.pad?.endsWith("/scripts/cf-proef/subdomain"));
+  assert.deepEqual(sub.body, { enabled: true, previews_enabled: true });
+});
+
+test("tijdelijke stand, Worker bestaat al: geen placeholder", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  await richtIn(TIJDELIJK, opzet(w));
+  assert.ok(
+    !w.schrijfacties().some((s) => s.includes("workers/scripts")),
+    JSON.stringify(w.schrijfacties()),
+  );
+  assert.ok(w.staat.apps.some((a) => a.name === "cf-proef-cf-proef-worker"));
+});
+
+test("standaardstand, Worker bestaat niet: geen placeholder, stap 4 overgeslagen", async () => {
+  const w = nepWolk();
+  const r = await richtIn(ARG, opzet(w));
+  assert.ok(!w.schrijfacties().some((s) => s.includes("workers/scripts")));
+  assert.equal(
+    r.stappen.find((s) => s.stap === "4 Access op de Worker").actie,
+    "overgeslagen: nog niet uitgerold",
+  );
+  assert.ok(!w.staat.apps.some((a) => a.name === "cf-proef-cf-proef-worker"));
+});
+
+test("tijdelijke stand zonder uitrol, droogloop: niets geschreven, placeholder en Access gepland", async () => {
+  const w = nepWolk();
+  const r = await richtIn({ ...TIJDELIJK, droogloop: true }, opzet(w));
+  assert.deepEqual(w.schrijfacties(), []);
+  assert.equal(
+    r.stappen.find((s) => s.stap === "4 Access op de Worker").actie,
+    "gepland: placeholder en Access op de Worker",
   );
 });
 
@@ -671,17 +724,16 @@ test("tijdelijke stand: een Access-app zonder voorvoegsel op het workers.dev-adr
   assert.deepEqual(w.schrijfacties(), []);
 });
 
-test("tijdelijke stand: tweede doorgang zet Access op de Worker", async () => {
-  const w = nepWolk();
+test("tijdelijke stand: tweede doorgang zet Access op een bestaande Worker zonder Access", async () => {
+  // Een app van vóór de placeholder: de Worker staat er, de Access op de Worker niet.
+  const w = nepWolk({ workerBestaat: true });
   const d = opzet(w);
   await richtIn(TIJDELIJK, d);
-  const w2 = nepWolk({ workerBestaat: true });
-  Object.assign(w2.staat, structuredClone(w.staat));
-  const d2 = opzet(w2);
-  const r = await tweedeDoorgang(TIJDELIJK, d2);
+  w.staat.apps = w.staat.apps.filter((a) => a.name !== "cf-proef-cf-proef-worker");
+  const r = await tweedeDoorgang(TIJDELIJK, d);
   assert.equal(r.melding, "aangemaakt");
   assert.deepEqual(
-    w2.staat.apps.filter((a) => a.type === "self_hosted").map((a) => a.domain),
+    w.staat.apps.filter((a) => a.type === "self_hosted").map((a) => a.domain),
     [WORKERS_DEV],
   );
 });
@@ -802,6 +854,7 @@ test("--opruimen: omgekeerde volgorde, meldt wat er stond en laat alles zonder v
   assert.deepEqual(
     schrijf.map((s) => s.replace(/\/(app|pol)-\d+/, "/<id>")),
     [
+      "DELETE cf/workers/scripts/cf-proef",
       "DELETE cf/access/apps/<id>",
       "DELETE cf/access/apps/<id>",
       "admin deleteProvider",
@@ -812,6 +865,7 @@ test("--opruimen: omgekeerde volgorde, meldt wat er stond en laat alles zonder v
   );
   const volgorde = r.verwijderd.map((v) => v.soort);
   assert.deepEqual(volgorde, [
+    "Worker-script",
     "Access op de Worker",
     "GitHub",
     "Access-app op de hostname",
@@ -839,7 +893,40 @@ test("--opruimen: omgekeerde volgorde, meldt wat er stond en laat alles zonder v
   assert.deepEqual(w.staat.ghVariabelen.repo, { REPO_ANDERE: "blijft" });
   assert.deepEqual(w.staat.ghSecrets.production, []);
   assert.deepEqual(w.staat.ghSecrets.repo, ["ANDER_SECRET"]);
-  assert.match(r.waarschuwingen.join(" "), /Worker cf-proef/);
+  assert.equal(w.staat.workerBestaat, false, "het Worker-script is weg");
+  assert.deepEqual(
+    r.verwijderd.find((v) => v.soort === "Worker-script"),
+    { soort: "Worker-script", naam: "cf-proef" },
+  );
+});
+
+test("--opruimen: een 404 bij het verwijderen van het Worker-script is geen fout", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(ARG, d);
+  const r = await ruimOp(ARG, d);
+  assert.ok(w.schrijfacties().includes("DELETE cf/workers/scripts/cf-proef"));
+  assert.ok(!r.verwijderd.some((v) => v.soort === "Worker-script"));
+});
+
+test("--opruimen zonder Worker-naam uit de config raakt geen Worker-script", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const d = opzet(w);
+  await richtIn(ARG, d);
+  const { worker: _weg, ...zonder } = ARG;
+  await ruimOp(zonder, d);
+  assert.ok(!w.schrijfacties().some((s) => s.includes("workers/scripts")));
+  assert.equal(w.staat.workerBestaat, true);
+});
+
+test("--opruimen droogloop: meldt het Worker-script maar verwijdert niets", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const d = opzet(w);
+  await richtIn(ARG, d);
+  w.aanroepen.length = 0;
+  const r = await ruimOp({ ...ARG, droogloop: true }, d);
+  assert.deepEqual(w.schrijfacties(), []);
+  assert.ok(r.verwijderd.some((v) => v.soort === "Worker-script" && v.naam === "cf-proef"));
 });
 
 test("--opruimen zonder iets met voorvoegsel doet niets", async () => {
@@ -847,7 +934,8 @@ test("--opruimen zonder iets met voorvoegsel doet niets", async () => {
     policies: [{ id: "eigen", name: "stagetwo", decision: "allow", include: [] }],
   });
   const r = await ruimOp(ARG, opzet(w));
-  assert.deepEqual(w.schrijfacties(), []);
+  // Alleen de poging op het script met de naam uit de config; de 404 is "was er niet".
+  assert.deepEqual(w.schrijfacties(), ["DELETE cf/workers/scripts/cf-proef"]);
   assert.deepEqual(r.verwijderd, []);
 });
 
@@ -1100,4 +1188,77 @@ test("inrichten wacht op de discovery vóór de provider in Supabase", async () 
   const r = await richtIn(ARG, d);
   assert.deepEqual(volgorde, ["wacht:true"]);
   assert.ok(r.stappen.some((s) => s.stap.startsWith("3.3")));
+});
+
+// ---------------------------------------------------------------- vraag en de placeholder
+
+test("vraag: een FormData-body gaat ongewijzigd mee, zonder JSON Content-Type", async () => {
+  const gezien = [];
+  const fetchFn = async (_url, opties) => {
+    gezien.push(opties);
+    return { ok: true, status: 200, statusText: "OK", text: async () => '{"result":1}' };
+  };
+  const form = new FormData();
+  form.append("a", "b");
+  const r = await vraag(fetchFn, "https://x.test/pad", { methode: "PUT", token: "t", body: form });
+  assert.deepEqual(r, { result: 1 });
+  assert.equal(gezien[0].body, form, "dezelfde FormData, niet geserialiseerd");
+  assert.equal(gezien[0].headers.Authorization, "Bearer t");
+  assert.ok(
+    !Object.keys(gezien[0].headers).some((k) => k.toLowerCase() === "content-type"),
+    "fetch zet zelf multipart met boundary",
+  );
+  await vraag(fetchFn, "https://x.test/pad", { methode: "POST", token: "t", body: { a: 1 } });
+  assert.equal(gezien[1].headers["Content-Type"], "application/json");
+  assert.equal(gezien[1].body, '{"a":1}');
+});
+
+test("vraag: een fout met een FormData-body noemt methode, pad en status zoals altijd", async () => {
+  const fetchFn = async () => ({
+    ok: false,
+    status: 400,
+    statusText: "Bad Request",
+    text: async () => JSON.stringify({ errors: [{ message: "kapot" }] }),
+  });
+  await assert.rejects(
+    () => vraag(fetchFn, "https://x.test/een/pad?x=1", { methode: "PUT", body: new FormData() }),
+    (fout) => fout.message === "PUT /een/pad gaf 400: kapot" && fout.status === 400,
+  );
+});
+
+test("maakPlaceholder: module die 503 geeft, daarna workers.dev en previews aan", async () => {
+  const w = nepWolk();
+  const cf = cloudflareClient({ fetchFn: w.fetchFn, token: "t", accountId: "acc" });
+  await cf.maakPlaceholder("rp-app");
+  assert.deepEqual(w.schrijfacties(), [
+    "PUT cf/workers/scripts/rp-app",
+    "POST cf/workers/scripts/rp-app/subdomain",
+  ]);
+  const form = w.aanroepen[0].body;
+  assert.deepEqual(JSON.parse(await form.get("metadata").text()), {
+    main_module: "placeholder.mjs",
+    compatibility_date: "2026-09-01",
+  });
+  const module = form.get("placeholder.mjs");
+  assert.equal(module.type, "application/javascript+module");
+  assert.equal(module.name, "placeholder.mjs");
+  const bron = await module.text();
+  const { default: worker } = await import(`data:text/javascript,${encodeURIComponent(bron)}`);
+  const antwoord = await worker.fetch(new Request("https://x.test/"));
+  assert.equal(antwoord.status, 503);
+  assert.equal(await antwoord.text(), "Deze app wordt ingericht.");
+  assert.equal(await cf.workerBestaat("rp-app"), true);
+});
+
+test("verwijderWorker: true als hij er was, false bij 404, andere fouten gaan door", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  const cf = cloudflareClient({ fetchFn: w.fetchFn, token: "t", accountId: "acc" });
+  assert.equal(await cf.verwijderWorker("rp-app"), true);
+  assert.equal(await cf.verwijderWorker("rp-app"), false);
+  const kapot = nepWolk({
+    workerBestaat: true,
+    faal: (methode) => (methode === "DELETE" ? { status: 500, message: "stuk" } : null),
+  });
+  const cf2 = cloudflareClient({ fetchFn: kapot.fetchFn, token: "t", accountId: "acc" });
+  await assert.rejects(() => cf2.verwijderWorker("rp-app"), /DELETE .* gaf 500/);
 });

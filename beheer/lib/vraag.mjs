@@ -3,12 +3,19 @@
  * Bearer-token. Een fout noemt altijd methode, endpoint en status, zodat je in het
  * logboek van de workflow meteen ziet welke stap stopte; de query-string (en dus een
  * eventuele `reveal=true`) valt eruit, de sleutel komt er nooit in.
+ *
+ * Een `FormData`-body (multipart, zoals het uploaden van een Worker-script) gaat
+ * ongewijzigd mee en zonder Content-Type: fetch zet dan zelf multipart/form-data met de
+ * boundary. Elke andere body gaat als JSON.
  */
 export async function vraag(fetchFn, url, { methode = "GET", token, body } = {}) {
+  const multipart = body instanceof FormData;
   const antwoord = await fetchFn(url, {
     method: methode,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: multipart
+      ? { Authorization: `Bearer ${token}` }
+      : { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
   });
   const tekst = await antwoord.text();
   let data = null;

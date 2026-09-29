@@ -9,7 +9,7 @@ Wat erin zit:
 | Bestand | Wat het doet |
 |---|---|
 | `inrichten-cloudflare.mjs` | het script: inrichten, tweede doorgang, vangnet, toegang bijwerken, opruimen |
-| `lib/cloudflare.mjs` | Access-policies, Access-apps, workers.dev-subdomein |
+| `lib/cloudflare.mjs` | Access-policies, Access-apps, workers.dev-subdomein, placeholder-Worker |
 | `lib/supabase.mjs` | project, sleutels, auth-config, custom provider `custom:cloudflare` |
 | `lib/toegang.mjs` | `toegang.json` controleren, vertalen naar policies, intrekken, vangnet-SQL |
 | `toegang.json` | wie bij welke app mag |
@@ -112,15 +112,26 @@ gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=true
 # 2. echt inrichten
 gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=false
 
-# 3. na de eerste uitrol vanaf main: Access op de Worker zelf
+# 3. alleen in de standaardstand, na de eerste uitrol vanaf main: Access op de Worker zelf
 gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=false -f tweede_doorgang=true
 ```
 
 De workflow geeft `--voorvoegsel cf-proef-` mee. Alleen met dat voorvoegsel valt het
 script terug op deze repo (`GITHUB_REPOSITORY`) en op `wrangler.jsonc` in de werkmap.
 
-Stap 3 zit ook in elke gewone run: zolang er nog niet is uitgerold meldt het script
-"nog niet uitgerold" en slaat hij de stap over.
+In de tijdelijke stand (`workers_dev: true`, geen routes) is stap 3 niet nodig. Staat
+de Worker er nog niet, dan zet de inrichting eerst een placeholder-Worker neer die op
+elk verzoek 503 "Deze app wordt ingericht." geeft, en meteen de Access op de Worker. Dat
+gebeurt vóór de GitHub-variabelen, die de uitrol pas mogelijk maken. De eerste echte
+uitrol (`wrangler deploy`) overschrijft de placeholder en landt zo meteen achter de
+deur: er is geen moment waarop de app zonder Access op workers.dev staat. Dat werkt
+ook als de inrichting in een andere repo draait dan de app.
+
+In de standaardstand bewaakt de deur op het eigen domein de app al vóór de uitrol; daar
+slaat de inrichting stap 4 over zolang er niet is uitgerold ("nog niet uitgerold") en
+zet stap 3 hierboven daarna de Access op de versie- en preview-adressen. Stap 3 zit ook
+in elke gewone run. Voor een app die is ingericht voordat de placeholder bestond, zet
+stap 3 de ontbrekende Access op de Worker alsnog.
 
 Het resultaat staat in het logboek als één regel die begint met `INRICHTING`. Geheimen
 staan daar nooit leesbaar in.
@@ -177,10 +188,11 @@ Verwijdert wat het script met het voorvoegsel (hier `cf-proef-`) voor de app en 
 groepen in `toegang.json` maakte, in omgekeerde volgorde: Access
 op de Worker, de GitHub-variabelen en -secrets die het script zette (ook een oud
 databasesecret op de repo zelf), de Access-app op de
-hostname, de custom provider, de SaaS-app, de policies en als laatste het
-Supabase-project. Alles zonder voorvoegsel blijft staan, en ook een naam met het
-voorvoegsel die niet uit die app of groepen volgt (daar komt een waarschuwing). Eerst
-kijken:
+hostname, de custom provider, de SaaS-app, het Worker-script, de policies en als
+laatste het Supabase-project. Het Worker-script gaat alleen weg met de exacte naam uit
+`wrangler.jsonc`; staat hij er niet (meer), dan is dat geen fout. Alles zonder voorvoegsel blijft staan, en ook een naam
+met het voorvoegsel die niet uit die app of groepen volgt (daar komt een waarschuwing).
+Eerst kijken:
 
 ```sh
 gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=true -f opruimen=true
@@ -192,9 +204,9 @@ Dan echt:
 gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=false -f opruimen=true
 ```
 
-De Worker `cf-proef` zelf en zijn eigen-domeinroute horen bij wrangler en blijven
-staan; het script waarschuwt als hij nog uitgerold is. Verwijder hem daarna in het
-Cloudflare-dashboard (Workers & Pages > cf-proef > Settings > Delete).
+Zonder `wrangler.jsonc` (bijvoorbeeld opruimen zonder uitgecheckte app-repo) blijft
+elk Worker-script staan; verwijder het dan in het Cloudflare-dashboard (Workers & Pages
+> cf-proef > Settings > Delete).
 
 ## Los van de template (beheer-repo)
 

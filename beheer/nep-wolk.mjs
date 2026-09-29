@@ -42,6 +42,8 @@ export function nepWolk({
   poolerFout = null,
 } = {}) {
   const staat = {
+    // Wordt true na een PUT van het script (de placeholder) en false na een DELETE.
+    workerBestaat,
     policies: policies.map((p) => ({ ...p })),
     apps: apps.map((a) => ({ ...a })),
     projecten: projecten.map((p) => ({ ...p })),
@@ -62,7 +64,13 @@ export function nepWolk({
   async function fetchFn(url, opties = {}) {
     const u = new URL(url);
     const methode = opties.method ?? "GET";
-    const body = opties.body ? JSON.parse(opties.body) : undefined;
+    // Een FormData (multipart, het Worker-script) blijft zoals hij is.
+    const body =
+      opties.body instanceof FormData
+        ? opties.body
+        : opties.body
+          ? JSON.parse(opties.body)
+          : undefined;
     const pad = `${u.host}${u.pathname}`;
     aanroepen.push({ soort: "fetch", methode, pad, url, body, headers: opties.headers });
 
@@ -129,8 +137,25 @@ export function nepWolk({
       if (rest === "/access/organizations" && methode === "GET")
         return cfOk({ auth_domain: "stagetwo.cloudflareaccess.com" });
       if (rest === "/workers/subdomain" && methode === "GET") return cfOk({ subdomain: subdomein });
-      if (pas(/^\/workers\/scripts\/([^/]+)$/) && methode === "GET") {
-        return workerBestaat ? antwoord(200, undefined) : cfFout(404, "script bestaat niet");
+      if (pas(/^\/workers\/scripts\/([^/]+)$/)) {
+        if (methode === "GET")
+          return staat.workerBestaat
+            ? antwoord(200, undefined)
+            : cfFout(404, "script bestaat niet");
+        if (methode === "PUT") {
+          if (!(body instanceof FormData)) return cfFout(400, "script verwacht multipart");
+          staat.workerBestaat = true;
+          return cfOk({ id: m[1] });
+        }
+        if (methode === "DELETE") {
+          if (!staat.workerBestaat) return cfFout(404, "script bestaat niet");
+          staat.workerBestaat = false;
+          return cfOk(null);
+        }
+      }
+      if (pas(/^\/workers\/scripts\/([^/]+)\/subdomain$/) && methode === "POST") {
+        if (!staat.workerBestaat) return cfFout(404, "script bestaat niet");
+        return cfOk(body);
       }
       return cfFout(404, `geen nep-route ${methode} ${rest}`);
     }

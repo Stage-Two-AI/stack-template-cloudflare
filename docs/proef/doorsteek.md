@@ -57,8 +57,11 @@ Doe het in deze volgorde. Na elke stap: uitkomst en bewijs in de tabel hieronder
    `beheer/lib/` en stel hem bij (zie "Open API-punten").
 4. **Eerste uitrol.** Een lege commit of kleine wijziging via een PR naar `main` mergen.
    De workflow `Uitrollen` zet de app op `cf-proef.stagetwotemp.workers.dev` (tijdelijke stand; het domein stagetwo.nl staat in een ander Cloudflare-account).
-5. **Tweede doorgang.** `... -f tweede_doorgang=true`: Access op de Worker zelf, zodat ook
-   de versie- en preview-adressen dicht zitten.
+5. **Tweede doorgang, alleen nodig in de standaardstand.** `... -f tweede_doorgang=true`:
+   Access op de Worker zelf, zodat ook de versie- en preview-adressen dicht zitten. In de
+   tijdelijke stand (zoals deze proef) zette stap 3 al een placeholder-Worker met de
+   Access erop neer; de eerste uitrol overschrijft de placeholder en staat meteen
+   achter de deur. Controleer wel dat de Access-app `cf-proef-cf-proef-worker` bestaat.
 6. **Tabel zonder grant (voor AE8).** In de SQL-editor van het proefproject:
    `create table public.proef_zonder_grant (id int); revoke all on public.proef_zonder_grant from anon, authenticated;`
    Dit is bewust geen migratie: de template zelf eist RLS en grants op elke tabel.

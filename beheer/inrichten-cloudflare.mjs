@@ -21,13 +21,17 @@
  *   3.3 custom provider custom:cloudflare in Supabase, met de issuer van de SaaS-app
  *   3.4 auth-config: site_url, uri_allow_list, e-mail-inlog uit (disable_signup blijft)
  *   3.5 Access-app op de hostname (de deur), dezelfde policies
+ *   4   Access op de Worker zelf (vóór 3.6, zodat hij er staat vóór de eerste uitrol)
  *   3.6 GitHub-variabelen en -secrets per omgeving
- *   4   Access op de Worker zelf; slaat over zolang er nog niet is uitgerold
  *
  * In de tijdelijke stand van wrangler.jsonc (`workers_dev: true`, geen routes; zie
  * scripts/lib/cloudflare-config.mjs) is er nog geen eigen domein. Dan is het adres
  * `<worker>.<subdomein>.workers.dev`, vervalt stap 3.5 en is de Access op de Worker
  * (stap 4) de enige deur. site_url en de redirect-lijst wijzen dan naar dat adres.
+ * Bestaat de Worker dan nog niet, dan zet stap 4 eerst een placeholder-Worker neer (503)
+ * en meteen de Access erop; de eerste echte uitrol overschrijft de placeholder en landt
+ * zo direct achter de deur. In de standaardstand slaat stap 4 over zolang er niet is
+ * uitgerold (de deur op het domein staat er dan al) en volgt hij met --tweede-doorgang.
  *
  * Elke stap is idempotent: wat al bestaat met het voorvoegsel wordt
  * hergebruikt, wat bestaat zónder voorvoegsel laat het script stoppen vóór er iets
@@ -387,10 +391,19 @@ export function standaardGh(env = process.env) {
 
 // ---------------------------------------------------------------- stap 4
 
+/**
+ * Stap 4. In de tijdelijke stand is de Access op de Worker de enige deur; bestaat de
+ * Worker nog niet, dan komt er eerst een placeholder, zodat die deur er staat vóór de
+ * eerste uitrol (die de placeholder overschrijft). In de standaardstand staat de deur
+ * op het domein en wacht deze stap op de uitrol.
+ */
 async function stapWorker(arg, d, v, policyIds) {
   const stap = "4 Access op de Worker";
+  let placeholder = false;
   if (!(await d.cf.workerBestaat(arg.worker))) {
-    return { stap, actie: "overgeslagen: nog niet uitgerold", id: null };
+    if (!v.tijdelijk) return { stap, actie: "overgeslagen: nog niet uitgerold", id: null };
+    await d.cf.maakPlaceholder(arg.worker);
+    placeholder = true;
   }
   if (!v.workerAccess) {
     const nieuw = await d.cf.maakApp(
@@ -402,18 +415,32 @@ async function stapWorker(arg, d, v, policyIds) {
         idps: v.idps,
       }),
     );
-    return { stap, actie: "aangemaakt", id: nieuw.id };
+    return {
+      stap,
+      actie: placeholder ? "placeholder neergezet, Access aangemaakt" : "aangemaakt",
+      id: nieuw.id,
+    };
   }
+  const voor = placeholder ? "placeholder neergezet, Access " : "";
   if (JSON.stringify(policyIdsVanApp(v.workerAccess)) === JSON.stringify(policyIds)) {
-    return { stap, actie: "ongewijzigd", id: v.workerAccess.id };
+    return { stap, actie: `${voor}ongewijzigd`, id: v.workerAccess.id };
   }
   await d.cf.werkAppBij(v.workerAccess.id, metPolicies(v.workerAccess, policyIds));
-  return { stap, actie: "policies bijgewerkt", id: v.workerAccess.id };
+  return { stap, actie: `${voor}policies bijgewerkt`, id: v.workerAccess.id };
 }
 
 // ---------------------------------------------------------------- de inrichting
 
 const GEEN_DEUR = "overgeslagen: tijdelijke stand (workers.dev), de Access op de Worker is de deur";
+const PLACEHOLDER_GEPLAND = "gepland: placeholder en Access op de Worker";
+
+/** Wat stap 4 in een droogloop zou doen. */
+function geplandWorker(v, workerBestaat) {
+  if (workerBestaat) {
+    return v.workerAccess ? `bestaat al (${v.workerAccess.id})` : `gepland: ${v.namen.worker}`;
+  }
+  return v.tijdelijk ? PLACEHOLDER_GEPLAND : "nog niet uitgerold: stap 4 volgt na de eerste uitrol";
+}
 
 function geplandeStappen(arg, v, workerBestaat) {
   const bestaat = (x, tekst) => (x ? `bestaat al (${x.id ?? x.ref})` : `gepland: ${tekst}`);
@@ -439,15 +466,10 @@ function geplandeStappen(arg, v, workerBestaat) {
       stap: "3.5 Access-app op de hostname",
       actie: v.tijdelijk ? GEEN_DEUR : bestaat(v.deur, `${v.namen.deur} op ${v.hostname}`),
     },
+    { stap: "4 Access op de Worker", actie: geplandWorker(v, workerBestaat) },
     {
       stap: "3.6 GitHub-variabelen en -secrets",
       actie: `gepland in ${arg.repo ?? "(geen repo)"}: variabelen in ${OMGEVINGEN.join(" en ")}, ${GH_PREVIEW_VARIABELEN.join(", ")} als repo-variabelen, secrets in omgeving ${SECRET_OMGEVING}`,
-    },
-    {
-      stap: "4 Access op de Worker",
-      actie: workerBestaat
-        ? bestaat(v.workerAccess, v.namen.worker)
-        : "nog niet uitgerold: stap 4 volgt na de eerste uitrol",
     },
   ];
 }
@@ -563,6 +585,13 @@ export async function richtIn(arg, d) {
     stap("3.5 Access-app op de hostname", `hergebruikt, policies bijgewerkt (${deur.id})`);
   } else stap("3.5 Access-app op de hostname", `hergebruikt (${deur.id})`);
 
+  // 4 Access op de Worker, vóór 3.6: pas met de GitHub-variabelen kan er uitgerold
+  // worden, en dan moet de deur er al staan. In de tijdelijke stand zet deze stap zo
+  // nodig eerst een placeholder neer; in de standaardstand slaat hij over tot na de
+  // eerste uitrol (--tweede-doorgang), want daar bewaakt de deur op het domein al.
+  const w = await stapWorker(arg, d, v, policyIds);
+  stap(w.stap, w.actie);
+
   // 3.6 GitHub
   // Zonder pooler loopt de rest door; alleen deploy-db heeft hem nodig.
   const pooler = await supabase.poolerHost(project.ref).catch((fout) => {
@@ -610,15 +639,6 @@ export async function richtIn(arg, d) {
     );
   }
 
-  // 4 Access op de Worker (tweede doorgang, slaat over zolang er niet is uitgerold)
-  const w = await stapWorker(arg, d, v, policyIds);
-  stap(w.stap, w.actie);
-  if (v.tijdelijk && !w.id) {
-    resultaat.waarschuwingen.push(
-      `tijdelijke stand: ${v.hostname} heeft nog geen Access, want de Worker is nog niet uitgerold; draai direct na de eerste uitrol --tweede-doorgang`,
-    );
-  }
-
   const weg = await verwijderOverbodig(cf, sync.overbodig);
   if (weg.length) stap("3.2 Access-policies", `overbodig verwijderd: ${weg.join(", ")}`);
 
@@ -631,7 +651,10 @@ export async function richtIn(arg, d) {
   return resultaat;
 }
 
-/** Alleen stap 4, na de eerste uitrol vanaf main. */
+/**
+ * Alleen stap 4, na de eerste uitrol vanaf main. Nodig in de standaardstand, en voor
+ * apps die zijn ingericht vóór de placeholder bestond.
+ */
 export async function tweedeDoorgang(arg, d) {
   const v = await verken(arg, d, { schrijven: false });
   const ids = {};
@@ -643,10 +666,10 @@ export async function tweedeDoorgang(arg, d) {
   const policyIds = policyIdsVoorApp(v.t, arg.app, ids);
   if (arg.droogloop) {
     const bestaat = await d.cf.workerBestaat(arg.worker);
-    return {
-      app: arg.app,
-      melding: bestaat ? "gepland: Access op de Worker" : "nog niet uitgerold",
-    };
+    let melding = "nog niet uitgerold";
+    if (bestaat) melding = "gepland: Access op de Worker";
+    else if (v.tijdelijk) melding = PLACEHOLDER_GEPLAND;
+    return { app: arg.app, melding };
   }
   const w = await stapWorker(arg, d, v, policyIds);
   return { app: arg.app, melding: w.actie, worker: w.id };
@@ -706,8 +729,9 @@ export async function vangnet(arg, d) {
  * voor de Access-apps en het Supabase-project die uit appNamen (de app van --app, of
  * anders elke app in toegang.json), voor de policies het voorvoegsel plus elke groep
  * in toegang.json. Een andere naam met het voorvoegsel ervoor blijft staan, met een
- * waarschuwing; alles zonder voorvoegsel ook. De Worker zelf en de eigen-domeinroute
- * horen bij wrangler en blijven ook staan; daar komt een waarschuwing.
+ * waarschuwing; alles zonder voorvoegsel ook. Het Worker-script gaat alleen weg met de
+ * exacte naam uit wrangler.jsonc (`arg.worker`), na de Access-apps; zonder die naam blijft
+ * elk script staan. De eigen-domeinroute hoort bij de Worker en gaat met hem mee.
  */
 export async function ruimOp(arg, d) {
   const vv = valideerVoorvoegsel(arg.voorvoegsel);
@@ -742,6 +766,12 @@ export async function ruimOp(arg, d) {
     );
   }
 
+  // Eerst het script, dan pas de deur ervoor: zo staat de app geen moment zonder Access.
+  // Alleen de exacte naam uit de config; een 404 is "was er niet".
+  if (arg.worker) {
+    const weg = droog ? await cf.workerBestaat(arg.worker) : await cf.verwijderWorker(arg.worker);
+    if (weg) verwijderd.push({ soort: "Worker-script", naam: arg.worker });
+  }
   for (const a of workerApps) {
     if (!droog) await cf.verwijderApp(a.id);
     verwijderd.push({ soort: "Access op de Worker", naam: a.name });
@@ -801,12 +831,6 @@ export async function ruimOp(arg, d) {
   for (const p of projecten) {
     if (!droog) await supabase.verwijderProject(p.ref);
     verwijderd.push({ soort: "Supabase-project", naam: `${p.name} (${p.ref})` });
-  }
-
-  if (arg.worker && (await cf.workerBestaat(arg.worker))) {
-    waarschuwingen.push(
-      `Worker ${arg.worker} staat nog uitgerold en heeft geen deur meer; verwijder hem met wrangler delete (U8) of draai de inrichting opnieuw`,
-    );
   }
   return { droogloop: droog, verwijderd, waarschuwingen };
 }
