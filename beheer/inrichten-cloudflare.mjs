@@ -95,7 +95,12 @@ export const OMGEVINGEN = ["production", "preview"];
  * die omgeving.
  */
 export const SECRET_OMGEVING = "production";
-const GH_VARIABELEN = ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY", "VITE_INLOGDIENST"];
+const GH_VARIABELEN = [
+  "VITE_SUPABASE_URL",
+  "VITE_SUPABASE_ANON_KEY",
+  "VITE_INLOGDIENST",
+  "SUPABASE_POOLER_HOST",
+];
 /**
  * De openbare waarden voor de PR-job in uitrollen.yml. Die job noemt geen omgeving
  * (dan kan een PR nooit bij een sleutel), dus staan ze als repo-variabelen; ze komen
@@ -553,12 +558,19 @@ export async function richtIn(arg, d) {
   } else stap("3.5 Access-app op de hostname", `hergebruikt (${deur.id})`);
 
   // 3.6 GitHub
+  const pooler = await supabase.poolerHost(project.ref);
+  if (!pooler) {
+    resultaat.waarschuwingen.push(
+      "Supabase gaf geen session pooler terug; zet SUPABASE_POOLER_HOST in omgeving production met de hand (Supabase > Connect > Session pooler), anders kan deploy-db.yml niet migreren",
+    );
+  }
   const gezet = await zetGithub(d, arg.repo, {
     variabelen: {
       VITE_SUPABASE_URL: supabaseUrl(project.ref),
       VITE_SUPABASE_ANON_KEY: sleutels.anon,
       VITE_INLOGDIENST: "cloudflare",
       CLOUDFLARE_ACCOUNT_ID: d.accountId,
+      ...(pooler ? { SUPABASE_POOLER_HOST: pooler } : {}),
     },
     // De preview draait op hetzelfde project; een eigen database gebruikt schema public.
     repoVariabelen: {

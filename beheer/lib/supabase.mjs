@@ -122,6 +122,16 @@ export function supabaseBeheer({ fetchFn = fetch, token, orgSlug, slaap = wacht 
       }
       return { anon: anon.api_key, serviceRole: service.api_key };
     },
+    /**
+     * Het adres van de session pooler (IPv4). De directe databasehost is alleen via IPv6
+     * bereikbaar, en de runners van GitHub hebben geen IPv6; deploy-db.yml migreert dus
+     * via deze host. NAGAAN (U7): veldnaam db_host en database_type PRIMARY.
+     */
+    async poolerHost(ref) {
+      const lijst = (await s(`/projects/${ref}/config/database/pooler`)) ?? [];
+      const primair = lijst.find((p) => p.database_type === "PRIMARY") ?? lijst[0];
+      return typeof primair?.db_host === "string" && primair.db_host ? primair.db_host : null;
+    },
     authConfig: (ref) => s(`/projects/${ref}/config/auth`),
     werkAuthBij: (ref, velden) =>
       s(`/projects/${ref}/config/auth`, { methode: "PATCH", body: velden }),

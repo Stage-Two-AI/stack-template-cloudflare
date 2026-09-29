@@ -169,6 +169,12 @@ export function nepWolk({
           { name: "service_role", type: "legacy", api_key: `geheim-sr-${m[1]}` },
         ]);
       }
+      if (pas(/^\/projects\/([^/]+)\/config\/database\/pooler$/) && methode === "GET") {
+        if (staat.geenPooler) return antwoord(200, []);
+        return antwoord(200, [
+          { database_type: "PRIMARY", db_host: "aws-0-eu-central-1.pooler.supabase.com" },
+        ]);
+      }
       if (pas(/^\/projects\/([^/]+)\/config\/auth$/)) {
         if (methode === "GET") return antwoord(200, { disable_signup: false, ...staat.auth[m[1]] });
         if (methode === "PATCH") {

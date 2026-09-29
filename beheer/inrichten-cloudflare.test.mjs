@@ -276,6 +276,7 @@ test("GitHub: variabelen per omgeving, secrets via stdin, niets in de argumenten
       VITE_SUPABASE_ANON_KEY: `anon-${ref}`,
       VITE_INLOGDIENST: "cloudflare",
       CLOUDFLARE_ACCOUNT_ID: "acc",
+      SUPABASE_POOLER_HOST: "aws-0-eu-central-1.pooler.supabase.com",
     });
   }
   const gh = w.aanroepen.filter((a) => a.soort === "gh");
@@ -933,4 +934,12 @@ test("Edge Functions en hun instellingen worden nergens aangeraakt", async () =>
     w.aanroepen.some((a) => /functions/.test(a.url ?? "")),
     false,
   );
+});
+
+test("pooler: zonder session pooler van Supabase stopt de inrichting niet, maar waarschuwt", async () => {
+  const w = nepWolk();
+  w.staat.geenPooler = true;
+  const r = await richtIn(ARG, opzet(w));
+  assert.equal(w.staat.ghVariabelen.production.SUPABASE_POOLER_HOST, undefined);
+  assert.ok(r.waarschuwingen.some((x) => x.includes("SUPABASE_POOLER_HOST")));
 });
