@@ -56,6 +56,7 @@ import {
   PROEF_VOORVOEGSEL,
   policyIdsVanApp,
   valideerVoorvoegsel,
+  wachtOpDiscovery,
   workerApp,
 } from "./lib/cloudflare.mjs";
 import {
@@ -529,7 +530,9 @@ export async function richtIn(arg, d) {
   const issuer = issuerVoor(v.team, clientId);
   resultaat.issuer = issuer;
 
-  // 3.3 custom provider
+  // 3.3 custom provider. Een net aangemaakte SaaS-app is pas na een paar minuten
+  // bereikbaar; zonder te wachten weigert Supabase de provider, en dan is het geheim weg.
+  await (d.wachtOpDiscovery ?? wachtOpDiscovery)(issuer);
   const admin = (d.maakAdmin ?? standaardAdmin)(supabaseUrl(project.ref), sleutels.serviceRole);
   const provider = await zetProvider(admin.customProviders, { issuer, clientId, clientSecret });
   stap("3.3 custom provider custom:cloudflare", provider);

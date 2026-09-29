@@ -9,7 +9,12 @@ import {
   vangnet,
   werkToegangBij,
 } from "./inrichten-cloudflare.mjs";
-import { cloudflareClient, inlogApp, valideerVoorvoegsel } from "./lib/cloudflare.mjs";
+import {
+  cloudflareClient,
+  inlogApp,
+  valideerVoorvoegsel,
+  wachtOpDiscovery,
+} from "./lib/cloudflare.mjs";
 import { supabaseBeheer, uriAllowList } from "./lib/supabase.mjs";
 import { magAanmelden } from "./lib/toegang.mjs";
 import { nepWolk } from "./nep-wolk.mjs";
@@ -47,6 +52,7 @@ function opzet(w, extra = {}) {
     supabase,
     maakAdmin: w.maakAdmin,
     gh: w.gh,
+    wachtOpDiscovery: async () => {},
     toegang: TOEGANG,
     accountId: "acc",
     wachtwoord: () => WACHTWOORD,
@@ -1051,4 +1057,46 @@ test("Sentry: opruimen haalt VITE_SENTRY_DSN en PREVIEW_VITE_SENTRY_DSN weg", as
   const github = r.verwijderd.find((v) => v.soort === "GitHub");
   assert.match(JSON.stringify(github), /production\/VITE_SENTRY_DSN/);
   assert.match(JSON.stringify(github), /repo\/PREVIEW_VITE_SENTRY_DSN/);
+});
+
+test("wachtOpDiscovery: wacht tot Cloudflare de nieuwe OIDC-app serveert", async () => {
+  const gevraagd = [];
+  let keer = 0;
+  const fetchFn = async (url) => {
+    gevraagd.push(url);
+    keer += 1;
+    return { ok: keer >= 3, status: keer >= 3 ? 200 : 404 };
+  };
+  const pogingen = await wachtOpDiscovery(
+    "https://t.cloudflareaccess.com/cdn-cgi/access/sso/oidc/abc",
+    {
+      fetchFn,
+      slaap: async () => {},
+    },
+  );
+  assert.equal(pogingen, 3);
+  assert.equal(
+    gevraagd[0],
+    "https://t.cloudflareaccess.com/cdn-cgi/access/sso/oidc/abc/.well-known/openid-configuration",
+  );
+});
+
+test("wachtOpDiscovery: geeft na het maximum een duidelijke fout", async () => {
+  const fetchFn = async () => ({ ok: false, status: 404 });
+  await assert.rejects(
+    wachtOpDiscovery("https://t/x", { fetchFn, slaap: async () => {}, pogingen: 4 }),
+    /na 4 pogingen.*404/,
+  );
+});
+
+test("inrichten wacht op de discovery vóór de provider in Supabase", async () => {
+  const w = nepWolk();
+  const volgorde = [];
+  const d = opzet(w);
+  d.wachtOpDiscovery = async (issuer) => {
+    volgorde.push(`wacht:${issuer.includes("/cdn-cgi/access/sso/oidc/")}`);
+  };
+  const r = await richtIn(ARG, d);
+  assert.deepEqual(volgorde, ["wacht:true"]);
+  assert.ok(r.stappen.some((s) => s.stap.startsWith("3.3")));
 });

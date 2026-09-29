@@ -11,7 +11,7 @@
  * Veldnamen van de API: waar een naam uit maar één bron komt of nog niet tegen de
  * echte API is getest, staat `NAGAAN (U7)` erbij. De live doorsteek (U7) bevestigt ze.
  */
-import { vraag } from "./vraag.mjs";
+import { vraag, wacht } from "./vraag.mjs";
 
 /** Het voorvoegsel van de proef; alleen de proef mag terugvallen op de eigen repo. */
 export const PROEF_VOORVOEGSEL = "cf-proef-";
@@ -81,6 +81,33 @@ export function normaliseerTeamDomein(waarde) {
  */
 export function issuerVoor(teamDomein, clientId) {
   return `https://${normaliseerTeamDomein(teamDomein)}/cdn-cgi/access/sso/oidc/${clientId}`;
+}
+
+/**
+ * Wacht tot Cloudflare een net aangemaakte OIDC-SaaS-app ook echt serveert. Direct na
+ * het aanmaken geeft het discovery-adres een paar minuten 404 ("Application is not an
+ * OIDC application"), en Supabase weigert de provider dan. Gemeten bij de doorsteek
+ * (29-09-2026): enkele minuten. Geeft het aantal pogingen terug.
+ */
+export async function wachtOpDiscovery(
+  issuer,
+  { fetchFn = fetch, slaap = wacht, pogingen = 36, wachtMs = 10_000 } = {},
+) {
+  const adres = `${issuer}/.well-known/openid-configuration`;
+  let laatste = null;
+  for (let poging = 1; poging <= pogingen; poging += 1) {
+    try {
+      const antwoord = await fetchFn(adres);
+      if (antwoord.ok) return poging;
+      laatste = antwoord.status;
+    } catch (fout) {
+      laatste = fout.message;
+    }
+    if (poging < pogingen) await slaap(wachtMs);
+  }
+  throw new Error(
+    `de OIDC-app is na ${pogingen} pogingen nog niet bereikbaar op ${adres} (laatste antwoord: ${laatste})`,
+  );
 }
 
 function policyLijst(policyIds) {
