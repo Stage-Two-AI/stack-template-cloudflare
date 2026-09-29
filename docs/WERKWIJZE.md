@@ -55,8 +55,8 @@ Daarom:
 **Alles in een browser-app is leesbaar voor de gebruiker.** Elke `VITE_`-variabele zit
 in het bestand dat de bezoeker downloadt.
 
-- Wél in de app: de Supabase **anon key**. Die is expres publiek en wordt door RLS
-  beschermd.
+- Wél in de app: de Supabase **anon key** en de **Sentry DSN**. Die zijn expres
+  publiek: de anon key wordt door RLS beschermd, de DSN kan alleen fouten insturen.
 - **Nooit** in de app: de **service role key**, API-sleutels van derden, wachtwoorden.
   Die horen in een Supabase Edge Function.
 - `.env` staat nooit in git. `.env.example` wel, met lege waarden en per variabele een

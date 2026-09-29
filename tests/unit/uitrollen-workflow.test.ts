@@ -12,6 +12,7 @@ const WORKFLOWS = resolve(__dirname, "../../.github/workflows");
 
 type Stap = {
   name?: string;
+  shell?: string;
   id?: string;
   run?: string;
   uses?: string;
@@ -94,7 +95,25 @@ describe("uitrollen.yml: de PR-job bouwt alleen, zonder sleutels", () => {
     expect(preview.environment).toBeUndefined();
     expect(tekst).not.toContain("secrets.");
     expect(tekst).not.toContain("CLOUDFLARE_API_TOKEN");
-    expect(tekst).not.toContain("wrangler");
+    // wrangler komt alleen voor in de droogoefening hieronder, nooit met een echte uitrol.
+    const metWrangler = preview.steps.filter((s) => JSON.stringify(s).includes("wrangler"));
+    expect(metWrangler.map((s) => s.run)).toEqual([
+      'pnpm exec wrangler deploy --dry-run --outdir "$RUNNER_TEMP/wrangler-dry"',
+    ]);
+    expect(tekst).not.toContain("versions upload");
+  });
+
+  it("haalt de wrangler-config van de PR na het bouwen door wrangler, droog en zonder sleutel", () => {
+    const bouw = stapIndex(preview, (s) => s.run?.includes("pnpm build") ?? false);
+    const droog = stapIndex(preview, (s) => s.run?.includes("wrangler deploy --dry-run") ?? false);
+    expect(droog).toBeGreaterThan(bouw);
+    const stap = preview.steps[droog];
+    expect(stap?.run).toContain('--outdir "$RUNNER_TEMP/wrangler-dry"');
+    expect(stap?.env).toEqual({ WRANGLER_SEND_METRICS: "false" });
+    expect(JSON.stringify(stap)).not.toContain("secrets.");
+    expect(JSON.stringify(stap)).not.toContain("CLOUDFLARE_");
+    const bewaar = preview.steps.find((s) => s.uses?.startsWith("actions/upload-artifact@"));
+    expect(stap?.if).toBe(bewaar?.if);
   });
 
   it("mag niets schrijven in de repo of de PR", () => {
@@ -206,6 +225,25 @@ describe("preview-uitrollen.yml: de upload vanaf main", () => {
     expect(stap?.run).toContain('--preview-alias "pr-$PR"');
     expect(JSON.stringify(upload)).not.toContain("wrangler deploy");
     expect(stap?.env?.CLOUDFLARE_API_TOKEN).toBe(gh("secrets.CLOUDFLARE_API_TOKEN"));
+  });
+
+  it("laat een mislukte upload de stap laten falen, ondanks de pipe naar tee", () => {
+    const stap = stappen.find((s) => s.run?.includes("versions upload"));
+    expect(stap?.shell).toBe("bash");
+    const run = stap?.run ?? "";
+    expect(run).toMatch(/^set -o pipefail$/m);
+    expect(run.indexOf("set -o pipefail")).toBeLessThan(run.indexOf("versions upload"));
+  });
+
+  it("waarschuwt als er na een geslaagde upload geen previewlink gevonden is", () => {
+    const run = stappen.find((s) => s.run?.includes("versions upload"))?.run ?? "";
+    expect(run).toMatch(/if \[ -z "\$url" \]/);
+    expect(run).toContain("::warning::");
+  });
+
+  it("meldt in de PR-reactie dat de preview de wrangler-config van main gebruikt", () => {
+    const reactie = stappen.find((s) => s.run?.includes("<!-- cloudflare-preview -->"));
+    expect(reactie?.run).toContain("wrangler.jsonc van main");
   });
 
   it("zet de previewlink als één reactie in de PR en werkt die bij (AE3)", () => {

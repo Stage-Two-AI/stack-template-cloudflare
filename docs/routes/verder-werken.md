@@ -31,8 +31,9 @@ misgaan:
 - Geen `any`, geen `@ts-ignore`, geen uitroepteken om een typefout weg te drukken.
   Los de echte fout op.
 - Alles wat van buiten komt, valideer je met Zod.
-- Geheime sleutels horen nooit in de app. Alleen de Supabase anon key mag in een
-  `VITE_`-variabele. Al het andere gaat naar een Edge Function.
+- Geheime sleutels horen nooit in de app. Alleen de Supabase anon key en de Sentry DSN
+  mogen in een `VITE_`-variabele; die zijn expres publiek. Al het andere gaat naar een
+  Edge Function.
 - Nieuwe tabel? Dan RLS aan én policies én een RLS-test. Volg dan de route
   `docs/routes/databasewijziging.md`.
 

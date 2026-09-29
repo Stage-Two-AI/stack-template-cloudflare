@@ -122,8 +122,10 @@ test("voorvoegsel: zonder voorvoegsel geen policy, met rp- krijgt de policy rp-"
 test("voorvoegsel: de hookfunctie volgt het voorvoegsel en is veilig voor SQL", () => {
   assert.equal(hookFunctie("cf-proef-"), "cf_proef_voor_aanmelden");
   assert.equal(hookFunctie("rp-"), "rp_voor_aanmelden");
-  assert.match(hookFunctie("a1-b2-"), /^[a-z0-9_]+$/);
+  assert.match(hookFunctie("a1b2-"), /^[a-z0-9_]+$/);
   for (const fout of [
+    "a1-b2-",
+    "cf-",
     undefined,
     "",
     "rp",
@@ -154,6 +156,27 @@ test("synchroniseren met rp-: alleen rp-policies zijn van ons, cf-proef- blijft 
     "rp-stagetwo",
   ]);
   assert.deepEqual(s.overbodig, [], "een policy met een ander voorvoegsel is nooit overbodig");
+});
+
+test("synchroniseren: overbodig is alleen vv plus een groepsnaam, nooit een geneste of vreemde naam", async () => {
+  const w = nepWolk({
+    policies: [
+      { id: "oud", name: "rp-oud", decision: "allow", include: [] },
+      { id: "vreemd", name: "rp-Handmatig Gemaakt", decision: "allow", include: [] },
+      { id: "proef", name: "cf-proef-stagetwo", decision: "allow", include: [] },
+    ],
+  });
+  const cf = cloudflareClient({
+    fetchFn: w.fetchFn,
+    token: "t",
+    accountId: "acc",
+    teamDomein: "stagetwo",
+  });
+  const s = await synchroniseerPolicies(cf, KLANT, { voorvoegsel: "rp-" });
+  assert.deepEqual(
+    s.overbodig.map((p) => p.id),
+    ["oud"],
+  );
 });
 
 // ---------------------------------------------------------------- synchroniseren

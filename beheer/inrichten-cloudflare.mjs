@@ -81,6 +81,7 @@ import {
   kaleNaamConflicten,
   koppelPolicies,
   policyIdsVoorApp,
+  policyNaam,
   synchroniseerPolicies,
   trekIn,
   valideerToegang,
@@ -560,8 +561,14 @@ export async function richtIn(arg, d) {
   } else stap("3.5 Access-app op de hostname", `hergebruikt (${deur.id})`);
 
   // 3.6 GitHub
-  const pooler = await supabase.poolerHost(project.ref);
-  if (!pooler) {
+  // Zonder pooler loopt de rest door; alleen deploy-db heeft hem nodig.
+  const pooler = await supabase.poolerHost(project.ref).catch((fout) => {
+    resultaat.waarschuwingen.push(
+      `de session pooler van Supabase was niet op te halen (${fout.message}); zet SUPABASE_POOLER_HOST in omgeving production met de hand (Supabase > Connect > Session pooler), anders kan deploy-db.yml niet migreren`,
+    );
+    return null;
+  });
+  if (!pooler && !resultaat.waarschuwingen.some((w) => w.includes("session pooler"))) {
     resultaat.waarschuwingen.push(
       "Supabase gaf geen session pooler terug; zet SUPABASE_POOLER_HOST in omgeving production met de hand (Supabase > Connect > Session pooler), anders kan deploy-db.yml niet migreren",
     );
@@ -691,22 +698,46 @@ export async function vangnet(arg, d) {
 // ---------------------------------------------------------------- opruimen
 
 /**
- * Verwijdert alles met het voorvoegsel, in omgekeerde volgorde van de inrichting, en
- * meldt wat er stond. Alles zonder voorvoegsel blijft staan. De Worker zelf en de
- * eigen-domeinroute horen bij wrangler en blijven ook staan; daar komt een waarschuwing.
+ * Verwijdert wat dit script voor deze app(s) met dit voorvoegsel maakt, in omgekeerde
+ * volgorde van de inrichting, en meldt wat er stond. Dat zijn alleen de exacte namen:
+ * voor de Access-apps en het Supabase-project die uit appNamen (de app van --app, of
+ * anders elke app in toegang.json), voor de policies het voorvoegsel plus elke groep
+ * in toegang.json. Een andere naam met het voorvoegsel ervoor blijft staan, met een
+ * waarschuwing; alles zonder voorvoegsel ook. De Worker zelf en de eigen-domeinroute
+ * horen bij wrangler en blijven ook staan; daar komt een waarschuwing.
  */
 export async function ruimOp(arg, d) {
   const vv = valideerVoorvoegsel(arg.voorvoegsel);
   const { cf, supabase } = d;
-  const apps = (await cf.apps()).filter((a) => a.name?.startsWith(vv));
-  const policies = (await cf.policies()).filter((p) => p.name?.startsWith(vv));
-  const projecten = (await supabase.projecten()).filter((p) => p.name?.startsWith(vv));
-  const workerApps = apps.filter((a) => a.name.endsWith("-worker"));
-  const saasApps = apps.filter((a) => a.type === "saas");
+  const appsUitBestand = arg.app ? [arg.app] : Object.keys(d.toegang?.apps ?? {});
+  const namen = appsUitBestand.map((app) => appNamen(app, vv));
+  const appNamenSet = new Set(namen.flatMap((n) => [n.deur, n.inlog, n.worker]));
+  const projectNamen = new Set(namen.map((n) => n.project));
+  const policyNamen = new Set(Object.keys(d.toegang?.groepen ?? {}).map((g) => policyNaam(g, vv)));
+
+  const alleApps = await cf.apps();
+  const allePolicies = await cf.policies();
+  const alleProjecten = await supabase.projecten();
+  const apps = alleApps.filter((a) => appNamenSet.has(a.name));
+  const policies = allePolicies.filter((p) => policyNamen.has(p.name));
+  const projecten = alleProjecten.filter((p) => projectNamen.has(p.name));
+  const workerApps = apps.filter((a) => namen.some((n) => n.worker === a.name));
+  const saasApps = apps.filter((a) => !workerApps.includes(a) && a.type === "saas");
   const deurApps = apps.filter((a) => !workerApps.includes(a) && !saasApps.includes(a));
   const verwijderd = [];
   const waarschuwingen = [];
   const droog = Boolean(arg.droogloop);
+
+  const blijft = [
+    ...alleApps.filter((a) => a.name?.startsWith(vv) && !apps.includes(a)),
+    ...allePolicies.filter((p) => p.name?.startsWith(vv) && !policies.includes(p)),
+    ...alleProjecten.filter((p) => p.name?.startsWith(vv) && !projecten.includes(p)),
+  ].map((x) => x.name);
+  if (blijft.length) {
+    waarschuwingen.push(
+      `blijft staan (begint met ${vv}, maar hoort niet bij ${appsUitBestand.join(", ") || "een app"} of de groepen in toegang.json): ${blijft.join(", ")}`,
+    );
+  }
 
   for (const a of workerApps) {
     if (!droog) await cf.verwijderApp(a.id);

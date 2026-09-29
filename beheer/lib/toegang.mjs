@@ -97,6 +97,23 @@ export function valideerToegang(t) {
   return t;
 }
 
+/** De naam van de policy van een groep: het voorvoegsel plus de groepsnaam. */
+export function policyNaam(groep, voorvoegsel) {
+  return `${valideerVoorvoegsel(voorvoegsel)}${groep}`;
+}
+
+/**
+ * Kan deze policy door dit script voor dit voorvoegsel gemaakt zijn? Dat is het
+ * voorvoegsel plus een geldige groepsnaam. Een naam van een ander, genest voorvoegsel
+ * kan hier niet tussen zitten: het voorvoegselpatroon (één streepje, aan het eind; zie
+ * valideerVoorvoegsel) zorgt dat geen ander geldig voorvoegsel met dit voorvoegsel
+ * begint.
+ */
+export function isEigenPolicy(naam, voorvoegsel) {
+  const vv = valideerVoorvoegsel(voorvoegsel);
+  return typeof naam === "string" && naam.startsWith(vv) && GROEPNAAM.test(naam.slice(vv.length));
+}
+
 /**
  * Een groep als herbruikbare Access-policy. NAGAAN (U7): de regelvormen
  * `email_domain.domain`, `email.email` en de IdP-groepsregels (`azureAD.id`,
@@ -132,7 +149,7 @@ export function policyVoorGroep(naam, groep, { groepenIdp, voorvoegsel } = {}) {
     include.push(...idpGroepen.map(regel));
   }
   return {
-    name: `${vv}${naam}`,
+    name: policyNaam(naam, vv),
     decision: "allow",
     include,
     exclude: klein(groep.uitsluiten).map((email) => ({ email: { email } })),
@@ -198,7 +215,7 @@ export async function synchroniseerPolicies(
     }
   }
   const namen = new Set(gewenst.map((g) => g.body.name));
-  const overbodig = huidig.filter((p) => p.name?.startsWith(voorvoegsel) && !namen.has(p.name));
+  const overbodig = huidig.filter((p) => isEigenPolicy(p.name, voorvoegsel) && !namen.has(p.name));
   return { ids, acties, overbodig };
 }
 

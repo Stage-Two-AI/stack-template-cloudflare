@@ -19,15 +19,18 @@ Wat erin zit:
 Alles wat het script aanmaakt heeft een naam die begint met het voorvoegsel. Dat is een
 verplichte instelling: `--voorvoegsel <vv->` of de omgevingsvariabele
 `BEHEER_VOORVOEGSEL` (de vlag gaat voor). De proef gebruikt `cf-proef-`, Richplant `rp-`.
-Het patroon is streng: een kleine letter, hoogstens vijftien kleine letters, cijfers of
-streepjes, en een streepje aan het eind. Zonder voorvoegsel start het script niet.
+Het patroon is streng: een kleine letter, hoogstens vijftien kleine letters of cijfers,
+en precies één streepje, aan het eind (`rp-`, niet `rp-x-`). `cf-proef-` is de enige
+uitzondering; `cf-` zelf wordt geweigerd. Zo kan geen voorvoegsel met een ander
+voorvoegsel beginnen, en neemt opruimen met het ene nooit iets van het andere mee.
+Zonder voorvoegsel start het script niet.
 
-Wat al bestaat met het voorvoegsel wordt hergebruikt; opruimen raakt alleen namen met
-het voorvoegsel. Bestaat er iets met dezelfde naam zónder voorvoegsel, of staat er al
-een andere Access-app op de hostname, dan stopt het script voordat het iets wijzigt. De
-hookfunctie van het vangnet heet ook naar het voorvoegsel (`cf_proef_voor_aanmelden`,
-`rp_voor_aanmelden`). Kies voorvoegsels die niet met elkaar beginnen: met `cf-` zou
-opruimen ook alles van `cf-proef-` meenemen.
+Wat al bestaat met het voorvoegsel wordt hergebruikt. Opruimen raakt alleen de exacte
+namen die het script voor de app en de groepen in `toegang.json` maakt; een andere naam
+met het voorvoegsel blijft staan, met een waarschuwing. Bestaat er iets met dezelfde
+naam zónder voorvoegsel, of staat er al een andere Access-app op de hostname, dan stopt
+het script voordat het iets wijzigt. De hookfunctie van het vangnet heet ook naar het
+voorvoegsel (`cf_proef_voor_aanmelden`, `rp_voor_aanmelden`).
 
 ## Voorwaarden (door Christijn)
 
@@ -170,11 +173,14 @@ de rest van het werk loopt gewoon door.
 
 ## Opruimen
 
-Verwijdert alles met het voorvoegsel (hier `cf-proef-`), in omgekeerde volgorde: Access
+Verwijdert wat het script met het voorvoegsel (hier `cf-proef-`) voor de app en de
+groepen in `toegang.json` maakte, in omgekeerde volgorde: Access
 op de Worker, de GitHub-variabelen en -secrets die het script zette (ook een oud
 databasesecret op de repo zelf), de Access-app op de
 hostname, de custom provider, de SaaS-app, de policies en als laatste het
-Supabase-project. Alles zonder voorvoegsel blijft staan. Eerst kijken:
+Supabase-project. Alles zonder voorvoegsel blijft staan, en ook een naam met het
+voorvoegsel die niet uit die app of groepen volgt (daar komt een waarschuwing). Eerst
+kijken:
 
 ```sh
 gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=true -f opruimen=true

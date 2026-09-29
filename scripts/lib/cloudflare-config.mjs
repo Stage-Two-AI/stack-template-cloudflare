@@ -35,9 +35,15 @@ const TOEGESTAAN = new Set([
   "env",
 ]);
 
-/** Binnen `env.<naam>` dezelfde lijst, zonder de sleutels die alleen bovenaan horen. */
+/**
+ * Binnen `env.<naam>` dezelfde lijst, zonder de sleutels die alleen bovenaan horen. Ook
+ * `routes` en `workers_dev` horen alleen bovenaan: in een omgeving zouden ze een tweede
+ * adres openen dat de controle van de standen hieronder niet ziet.
+ */
 const TOEGESTAAN_IN_ENV = new Set(
-  [...TOEGESTAAN].filter((sleutel) => !["$schema", "env"].includes(sleutel)),
+  [...TOEGESTAAN].filter(
+    (sleutel) => !["$schema", "env", "routes", "workers_dev"].includes(sleutel),
+  ),
 );
 
 /** Bekende opslag van Cloudflare zelf; die krijgt een eigen, duidelijke melding. */
@@ -177,8 +183,14 @@ export function cloudflareConfig(pad = "wrangler.jsonc") {
       `\`workers_dev\` ontbreekt; zonder die regel zet wrangler het workers.dev-adres aan. ${STANDEN}`,
     );
   }
-  const domein = routes.find((r) => r?.custom_domain === true);
-  if (!domein?.pattern) {
+  if (routes.length > 1) {
+    fout(
+      `er staan ${routes.length} routes in, maar de standaardstand heeft precies één route: het eigen domein. ` +
+        `Access beschermt alleen dat domein, dus elke extra route (een tweede domein of een zone-route) staat open. ${STANDEN}`,
+    );
+  }
+  const domein = routes[0];
+  if (domein?.custom_domain !== true || typeof domein.pattern !== "string" || !domein.pattern) {
     fout(
       `er staat geen route met \`custom_domain: true\` in, dus de app heeft geen adres. ${STANDEN}`,
     );

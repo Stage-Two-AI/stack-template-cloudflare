@@ -19,11 +19,22 @@ export const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const PER_PAGINA = 100;
 
 /**
- * Een voorvoegsel is een kleine letter, dan hoogstens vijftien kleine letters, cijfers
- * of streepjes, en eindigt op een streepje. Daardoor is ook de hookfunctie die ervan
- * afgeleid wordt (streepjes worden liggende streepjes) altijd veilig in SQL.
+ * Een voorvoegsel is een kleine letter, dan hoogstens vijftien kleine letters of cijfers,
+ * en precies één streepje, aan het eind (bijvoorbeeld `rp-`). De enige uitzondering is
+ * het voorvoegsel van de proef, `cf-proef-`; `cf-` zelf en elk ander voorvoegsel met
+ * `cf-` ervoor is geweigerd.
+ *
+ * Daardoor kan geen geldig voorvoegsel met een ander geldig voorvoegsel beginnen: wat
+ * met `rp-` begint is van `rp-` en van niemand anders (een `rp-x-` bestaat niet). Het
+ * eigendom op het gedeelde account hangt aan die garantie. Ook de hookfunctie die ervan
+ * afgeleid wordt (streepjes worden liggende streepjes) is daardoor altijd veilig in SQL.
  */
-const VOORVOEGSEL_PATROON = /^[a-z][a-z0-9-]{0,15}-$/;
+const VOORVOEGSEL_PATROON = /^[a-z][a-z0-9]{0,15}-$/;
+
+function geldigVoorvoegsel(voorvoegsel) {
+  if (voorvoegsel === PROEF_VOORVOEGSEL) return true;
+  return VOORVOEGSEL_PATROON.test(voorvoegsel) && voorvoegsel !== "cf-";
+}
 
 export function valideerVoorvoegsel(voorvoegsel) {
   if (voorvoegsel === undefined || voorvoegsel === null || voorvoegsel === "") {
@@ -31,9 +42,9 @@ export function valideerVoorvoegsel(voorvoegsel) {
       "het voorvoegsel ontbreekt: geef --voorvoegsel <voorvoegsel> mee of zet BEHEER_VOORVOEGSEL (proef: cf-proef-, Richplant: rp-). Alles wat het script aanmaakt, hergebruikt of opruimt hangt eraan.",
     );
   }
-  if (typeof voorvoegsel !== "string" || !VOORVOEGSEL_PATROON.test(voorvoegsel)) {
+  if (typeof voorvoegsel !== "string" || !geldigVoorvoegsel(voorvoegsel)) {
     throw new Error(
-      `het voorvoegsel "${voorvoegsel}" is ongeldig: een kleine letter, dan hoogstens vijftien kleine letters, cijfers of streepjes, en een streepje aan het eind (bijvoorbeeld rp-)`,
+      `het voorvoegsel "${voorvoegsel}" is ongeldig: een kleine letter, dan hoogstens vijftien kleine letters of cijfers, en één streepje aan het eind (bijvoorbeeld rp-); ${PROEF_VOORVOEGSEL} is de enige uitzondering en cf- is voor de proef gereserveerd`,
     );
   }
   return voorvoegsel;

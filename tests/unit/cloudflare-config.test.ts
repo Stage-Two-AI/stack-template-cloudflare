@@ -113,6 +113,33 @@ describe("cloudflareConfig: de twee standen", () => {
     expect(r.uitvoer).toContain("custom_domain");
   });
 
+  it("weigert twee eigen domeinen: de standaardstand heeft precies één adres", () => {
+    const r = controleerConfig({
+      ...GOED,
+      routes: [
+        { pattern: "cf-proef.stagetwo.nl", custom_domain: true },
+        { pattern: "tweede.stagetwo.nl", custom_domain: true },
+      ],
+    });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("precies één route");
+    expect(r.uitvoer).toContain("standaard");
+    expect(r.uitvoer).toContain("tijdelijk");
+  });
+
+  it("weigert een eigen domein plus een zone-route: die tweede route staat zonder Access", () => {
+    const r = controleerConfig({
+      ...GOED,
+      routes: [
+        { pattern: "cf-proef.stagetwo.nl", custom_domain: true },
+        { pattern: "stagetwo.nl/app/*", zone_name: "stagetwo.nl" },
+      ],
+    });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("precies één route");
+    expect(r.uitvoer).toContain("standaard");
+  });
+
   it("weigert een config zonder single-page-application", () => {
     const r = controleerConfig({ ...GOED, assets: { directory: "./dist" } });
     expect(r.code).not.toBe(0);
@@ -220,6 +247,21 @@ describe("cloudflareConfig: alleen toegestane sleutels (geen opslag van Cloudfla
     expect(r.uitvoer).toContain("kv_namespaces");
     expect(r.uitvoer).toContain("containers");
     expect(r.uitvoer).toContain("env.production.r2_buckets");
+  });
+
+  it("weigert routes binnen env.production: een omgeving mag geen tweede adres openen", () => {
+    const r = controleerConfig({
+      ...GOED,
+      env: { production: { routes: [{ pattern: "ander.stagetwo.nl", custom_domain: true }] } },
+    });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("env.production.routes");
+  });
+
+  it("weigert workers_dev: true binnen env.*", () => {
+    const r = controleerConfig({ ...GOED, env: { preview: { workers_dev: true } } });
+    expect(r.code).not.toBe(0);
+    expect(r.uitvoer).toContain("env.preview.workers_dev");
   });
 
   it("weigert een env die geen object is", () => {

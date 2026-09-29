@@ -39,6 +39,7 @@ export function nepWolk({
   ghVariabelen = {},
   ghSecrets = {},
   faal = () => null,
+  poolerFout = null,
 } = {}) {
   const staat = {
     policies: policies.map((p) => ({ ...p })),
@@ -52,6 +53,8 @@ export function nepWolk({
     // Secret-namen per omgeving; "repo" voor secrets op de repo zelf.
     ghSecrets: structuredClone(ghSecrets),
     teller: 0,
+    // Een HTTP-status: dan faalt de pooler-endpoint met die status (bijvoorbeeld 500).
+    poolerFout,
   };
   const aanroepen = [];
   const nieuwId = (soort) => `${soort}-${++staat.teller}`;
@@ -170,6 +173,7 @@ export function nepWolk({
         ]);
       }
       if (pas(/^\/projects\/([^/]+)\/config\/database\/pooler$/) && methode === "GET") {
+        if (staat.poolerFout) return antwoord(staat.poolerFout, { message: "pooler kapot" });
         if (staat.geenPooler) return antwoord(200, []);
         return antwoord(200, [
           { database_type: "PRIMARY", db_host: "aws-0-eu-central-1.pooler.supabase.com" },

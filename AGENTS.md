@@ -93,9 +93,10 @@ docs/solutions/        gedocumenteerde oplossingen van eerdere problemen (bugs, 
 - **Databasetypes komen uit `pnpm db:types`**, nooit met de hand verzonnen. Klaagt
   TypeScript over een kolom, dan is het antwoord de typegeneratie, niet een `any`.
 - **Invoer van buiten** (formulieren, webhooks, API's) valideer je met Zod.
-- **Secrets nooit in de app-bundel.** Alleen de Supabase anon key mag in een
-  `VITE_`-variabele; die is expres publiek en wordt door RLS beschermd. Alles met een
-  geheime sleutel gaat naar een Supabase Edge Function.
+- **Secrets nooit in de app-bundel.** Alleen de Supabase anon key en de Sentry DSN
+  mogen in een `VITE_`-variabele; die zijn expres publiek (de anon key wordt door RLS
+  beschermd, de DSN kan alleen fouten insturen). Alles met een geheime sleutel gaat
+  naar een Supabase Edge Function.
 - **`supabase/functions/` draait op Deno**, de rest op Node en in de browser. Imports
   zijn niet uitwisselbaar tussen die twee, en die map valt buiten `tsconfig.json`.
 - **Databasewijzigingen altijd als migratie** in `supabase/migrations/`, nooit

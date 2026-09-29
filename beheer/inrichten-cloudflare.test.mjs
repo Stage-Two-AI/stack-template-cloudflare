@@ -9,7 +9,7 @@ import {
   vangnet,
   werkToegangBij,
 } from "./inrichten-cloudflare.mjs";
-import { cloudflareClient, inlogApp } from "./lib/cloudflare.mjs";
+import { cloudflareClient, inlogApp, valideerVoorvoegsel } from "./lib/cloudflare.mjs";
 import { supabaseBeheer, uriAllowList } from "./lib/supabase.mjs";
 import { magAanmelden } from "./lib/toegang.mjs";
 import { nepWolk } from "./nep-wolk.mjs";
@@ -102,6 +102,14 @@ test("argumenten: zonder voorvoegsel stopt het script met een duidelijke melding
     BEHEER_VOORVOEGSEL: "rp-",
   });
   assert.equal(vlagWint.voorvoegsel, "cf-proef-");
+});
+
+test("voorvoegsel: precies één streepje aan het eind, cf-proef- is de enige uitzondering", () => {
+  for (const fout of ["cf-", "rp-x-", "cf-ander-", "cf-proef-x-"]) {
+    assert.throws(() => valideerVoorvoegsel(fout), /voorvoegsel/, fout);
+  }
+  assert.equal(valideerVoorvoegsel("rp-"), "rp-");
+  assert.equal(valideerVoorvoegsel("cf-proef-"), "cf-proef-");
 });
 
 test("argumenten: buiten de proef zijn --repo en --wrangler verplicht", () => {
@@ -390,6 +398,49 @@ test("voorvoegsel rp-: opruimen raakt alleen rp-namen", async () => {
     w.staat.projecten.map((p) => p.ref),
     ["proefref"],
   );
+});
+
+test("opruimen verwijdert alleen de exacte namen van deze app en deze groepen", async () => {
+  // Namen die met rp- beginnen maar niet uit appNamen of toegang.json volgen (zoals
+  // die van een genest voorvoegsel rp-x-) blijven staan, met een waarschuwing. Ze komen
+  // pas na de inrichting in de wolk, zodat alleen ruimOp ze kan raken.
+  const w = nepWolk();
+  const arg = {
+    ...ARG,
+    app: "richplant",
+    voorvoegsel: "rp-",
+    repo: "Richplant-BV/richplant-start",
+  };
+  const toegang = { groepen: { rp: { domeinen: ["richplant.nl"] } }, apps: { richplant: ["rp"] } };
+  const d = opzet(w, { toegang });
+  await richtIn(arg, d);
+  w.staat.policies.push({ id: "genest-pol", name: "rp-x-rp", decision: "allow", include: [] });
+  w.staat.apps.push({
+    id: "genest-app",
+    name: "rp-x-richplant",
+    type: "self_hosted",
+    domain: "x.nl",
+  });
+  w.staat.projecten.push({
+    ref: "genestref",
+    name: "rp-x-richplant",
+    organization_slug: "stagetwo",
+    status: "ACTIVE_HEALTHY",
+  });
+  const r = await ruimOp(arg, d);
+  assert.deepEqual(
+    w.staat.policies.map((p) => p.id),
+    ["genest-pol"],
+  );
+  assert.deepEqual(
+    w.staat.apps.map((a) => a.id),
+    ["genest-app"],
+  );
+  assert.deepEqual(
+    w.staat.projecten.map((p) => p.ref),
+    ["genestref"],
+  );
+  assert.match(r.waarschuwingen.join(" "), /rp-x-richplant/);
 });
 
 test("zonder voorvoegsel in de argumenten weigert de inrichting vóór er iets gebeurt", async () => {
@@ -942,6 +993,22 @@ test("pooler: zonder session pooler van Supabase stopt de inrichting niet, maar 
   const r = await richtIn(ARG, opzet(w));
   assert.equal(w.staat.ghVariabelen.production.SUPABASE_POOLER_HOST, undefined);
   assert.ok(r.waarschuwingen.some((x) => x.includes("SUPABASE_POOLER_HOST")));
+});
+
+test("pooler: een fout bij het opvragen van de pooler stopt de inrichting niet, maar waarschuwt", async () => {
+  const w = nepWolk({ poolerFout: 500 });
+  const r = await richtIn(ARG, opzet(w));
+  const prod = w.staat.ghVariabelen.production;
+  assert.equal(prod.SUPABASE_POOLER_HOST, undefined);
+  assert.ok(prod.VITE_SUPABASE_URL, "de andere variabelen staan er wel");
+  assert.equal(prod.VITE_INLOGDIENST, "cloudflare");
+  const w500 = r.waarschuwingen.find((x) => x.includes("pooler"));
+  assert.match(w500 ?? "", /gaf 500/);
+  assert.match(w500, /SUPABASE_POOLER_HOST/);
+  assert.ok(
+    r.stappen.some((s) => s.stap.startsWith("4")),
+    "stap 4 loopt ook",
+  );
 });
 
 // ---------------------------------------------------------------- Sentry

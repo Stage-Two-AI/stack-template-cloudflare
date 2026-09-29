@@ -116,9 +116,15 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
           PR: ${{ steps.pr.outputs.nummer }}
+        # Zonder pipefail telt alleen de exitcode van tee, en blijft een mislukte upload groen.
+        shell: bash
         run: |
+          set -o pipefail
           pnpm exec wrangler versions upload --preview-alias "pr-$PR" | tee upload.log
-          url=$(grep -oE 'https://pr-[0-9]+-[^ ]+\.workers\.dev' upload.log | head -n 1)
+          url=$(grep -oE 'https://pr-[0-9]+-[^ ]+\.workers\.dev' upload.log | head -n 1 || true)
+          if [ -z "$url" ]; then
+            echo "::warning::De upload is gelukt, maar er staat geen previewlink in de uitvoer van wrangler. Er komt geen reactie in de PR."
+          fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
       - name: Link in de PR zetten
@@ -134,7 +140,8 @@ jobs:
           tekst="$markering
           Cloudflare-preview: $URL
 
-          Deze link staat achter dezelfde login als productie en toont de testbalk."
+          Deze link staat achter dezelfde login als productie en toont de testbalk.
+          De preview gebruikt de wrangler.jsonc van main; een wijziging daarin uit deze PR zie je pas na de merge."
           bestaand=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq ".[] | select(.body | startswith(\"$markering\")) | .id" | head -n 1)
           if [ -n "$bestaand" ]; then

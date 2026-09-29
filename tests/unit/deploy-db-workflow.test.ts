@@ -57,6 +57,24 @@ describe("deploy-db.yml", () => {
       `${EXPRESSIE} secrets.SUPABASE_DB_PASSWORD }}`,
     ]);
     expect(env[1]?.PROJECT_REF).toBe(`${EXPRESSIE} secrets.SUPABASE_PROJECT_REF }}`);
+    for (const e of env) expect(e.POOLER).toBe(`${EXPRESSIE} vars.SUPABASE_POOLER_HOST }}`);
+  });
+
+  it("bouwt het adres met scripts/db-url.mjs, en maskeert het gecodeerde wachtwoord eerst", () => {
+    const pushes = migratiejobs
+      .flatMap(([, j]) => j.steps)
+      .filter((s) => /supabase db push/.test(s.run ?? ""));
+    for (const s of pushes) {
+      const run = s.run ?? "";
+      const masker = run.indexOf("node scripts/db-url.mjs --mask");
+      const adres = run.indexOf("DB_URL=$(node scripts/db-url.mjs)");
+      expect(masker, s.name).toBeGreaterThanOrEqual(0);
+      expect(adres, s.name).toBeGreaterThan(masker);
+      expect(run.indexOf("supabase ", adres), s.name).toBeGreaterThan(adres);
+      // Het adres wordt nergens meer met de hand in de workflow gebouwd.
+      expect(run, s.name).not.toContain("postgresql://");
+      expect(run, s.name).not.toContain("encodeURIComponent");
+    }
   });
 
   it("slaat met een melding over als wachtwoord of project-ref ontbreekt", () => {

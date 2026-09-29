@@ -91,8 +91,9 @@ jobs:
             echo "doen=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Het adres van de database wordt in de stap zelf gebouwd en nergens bewaard. Het
-      # wachtwoord is een secret en wordt dus ook binnen het adres gemaskeerd.
+      # Het adres van de database bouwt scripts/db-url.mjs, in de stap zelf, en het wordt
+      # nergens bewaard. Het gecodeerde wachtwoord verschilt van het secret; de eerste
+      # aanroep (--mask) schermt het af in het log voordat het adres bestaat.
       # Standaard de directe verbinding db.<ref>.supabase.co. Die is alleen via IPv6
       # bereikbaar, en de runners van GitHub hebben geen IPv6. Zet daarom in omgeving
       # production de variabele SUPABASE_POOLER_HOST (zie Supabase > Connect > Session
@@ -105,14 +106,9 @@ jobs:
           WACHTWOORD: ${{ secrets.SUPABASE_TEST_DB_PASSWORD }}
           POOLER: ${{ vars.SUPABASE_POOLER_HOST }}
         run: |
-          ww=$(node -e 'process.stdout.write(encodeURIComponent(process.env.WACHTWOORD))')
-          # Het gecodeerde wachtwoord verschilt van het secret; ook dit afschermen in het log.
-          echo "::add-mask::$ww"
-          if [ -n "$POOLER" ]; then
-            DB_URL="postgresql://postgres.$PROJECT_REF:$ww@$POOLER:5432/postgres"
-          else
-            DB_URL="postgresql://postgres:$ww@db.$PROJECT_REF.supabase.co:5432/postgres"
-          fi
+          # Eerst het masker voor het gecodeerde wachtwoord, dan pas het adres.
+          node scripts/db-url.mjs --mask
+          DB_URL=$(node scripts/db-url.mjs)
           pnpm exec supabase db push --db-url "$DB_URL" --include-all
 
       # De Supabase CLI zit als devDependency in package.json, dus hier draait exact
@@ -124,14 +120,9 @@ jobs:
           WACHTWOORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           POOLER: ${{ vars.SUPABASE_POOLER_HOST }}
         run: |
-          ww=$(node -e 'process.stdout.write(encodeURIComponent(process.env.WACHTWOORD))')
-          # Het gecodeerde wachtwoord verschilt van het secret; ook dit afschermen in het log.
-          echo "::add-mask::$ww"
-          if [ -n "$POOLER" ]; then
-            DB_URL="postgresql://postgres.$PROJECT_REF:$ww@$POOLER:5432/postgres"
-          else
-            DB_URL="postgresql://postgres:$ww@db.$PROJECT_REF.supabase.co:5432/postgres"
-          fi
+          # Eerst het masker voor het gecodeerde wachtwoord, dan pas het adres.
+          node scripts/db-url.mjs --mask
+          DB_URL=$(node scripts/db-url.mjs)
           echo "Wat er zou draaien:"
           pnpm exec supabase migration list --db-url "$DB_URL"
           pnpm exec supabase db push --db-url "$DB_URL" --include-all
