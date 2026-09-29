@@ -30,7 +30,7 @@ belangrijkste open vraag van de proef.
 - Gevonden: een net aangemaakte SaaS-app geeft een paar minuten 404 op het
   discovery-adres ("Application is not an OIDC application"). De inrichting wacht daar
   nu op (PR #5).
-- Koppeltest voorbereid: wachtwoordgebruiker `aiwincoholland@gmail.com` met id
+- Koppeltest voorbereid: wachtwoordgebruiker `info@stagetwo.nl` met id
   `6bff3fe7-2eff-4c80-a566-faaa3990ef4d` in project `jdglffjwhkjbpyrwecbm`.
 - Deze merge is de eerste uitrol (stap 4).
 
@@ -57,7 +57,7 @@ Doe het in deze volgorde. Na elke stap: uitkomst en bewijs in de tabel hieronder
    `create table public.proef_zonder_grant (id int); revoke all on public.proef_zonder_grant from anon, authenticated;`
    Dit is bewust geen migratie: de template zelf eist RLS en grants op elke tabel.
 7. **Koppeltest (R16, voor finance).** Maak in het proefproject een bevestigde
-   wachtwoordgebruiker aan met `aiwincoholland@gmail.com`, zoals in finance. Noteer zijn
+   wachtwoordgebruiker aan met `info@stagetwo.nl`, zoals in finance. Noteer zijn
    `id`. Log daarna in via `https://cf-proef.stagetwotemp.workers.dev` (AE1). Blijft het `id` van de
    ingelogde gebruiker gelijk en komt er geen tweede rij in `auth.users`, dan werkt de
    koppeling. Zo niet, dan is het antwoord voor finance "nee" tot dat is opgelost.

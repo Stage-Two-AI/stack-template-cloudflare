@@ -248,6 +248,7 @@ test("volledige run: custom provider met issuer, client_id, PKCE en scopes, via 
     issuer: "https://stagetwo.cloudflareaccess.com/cdn-cgi/access/sso/oidc/cid-3",
     pkce_enabled: true,
     scopes: ["openid", "email", "profile"],
+    attribute_mapping: { email_verified: true },
     enabled: true,
   });
 });
@@ -1099,4 +1100,18 @@ test("inrichten wacht op de discovery vóór de provider in Supabase", async () 
   const r = await richtIn(ARG, d);
   assert.deepEqual(volgorde, ["wacht:true"]);
   assert.ok(r.stappen.some((s) => s.stap.startsWith("3.3")));
+});
+
+test("provider: een bestaande provider zonder email_verified-mapping wordt bijgewerkt", async () => {
+  const w = nepWolk();
+  await richtIn(ARG, opzet(w));
+  const p = w.staat.providers[0];
+  p.attribute_mapping = {};
+  w.aanroepen.length = 0;
+  const r = await richtIn(ARG, opzet(w));
+  const bij = w.aanroepen.find((a) => a.methode === "updateProvider");
+  assert.ok(bij, "updateProvider aangeroepen");
+  assert.deepEqual(bij.body.attribute_mapping, { email_verified: true });
+  assert.equal(bij.body.client_secret, undefined, "geen geheim nodig om bij te werken");
+  assert.ok(r.stappen.some((s) => s.stap.startsWith("3.3") && s.actie === "bijgewerkt"));
 });
