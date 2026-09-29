@@ -217,6 +217,46 @@ export function policyIdsVanApp(app) {
   return (app?.policies ?? []).map((p) => (typeof p === "string" ? p : p.id));
 }
 
+/**
+ * De placeholder-Worker: geeft op elk verzoek 503 "Deze app wordt ingericht." Hij staat
+ * er alleen tussen de inrichting en de eerste echte uitrol, zodat de Access op de Worker
+ * al bestaat voordat er iets van de app op workers.dev staat. `wrangler deploy`
+ * overschrijft hem.
+ */
+export const PLACEHOLDER_MODULE = `export default {
+  fetch() {
+    return new Response("Deze app wordt ingericht.", {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8", "retry-after": "60" },
+    });
+  },
+};
+`;
+
+/**
+ * Het multipart-formulier voor het uploaden van de placeholder als ES-module.
+ * NAGAAN (U7): de deelnamen `metadata` en `<main_module>`, `main_module` en
+ * `compatibility_date` in de metadata, en het type `application/javascript+module`.
+ */
+export function placeholderFormulier() {
+  const form = new FormData();
+  form.append(
+    "metadata",
+    new Blob(
+      [JSON.stringify({ main_module: "placeholder.mjs", compatibility_date: "2026-09-01" })],
+      {
+        type: "application/json",
+      },
+    ),
+  );
+  form.append(
+    "placeholder.mjs",
+    new Blob([PLACEHOLDER_MODULE], { type: "application/javascript+module" }),
+    "placeholder.mjs",
+  );
+  return form;
+}
+
 export function cloudflareClient({ fetchFn = fetch, token, accountId, teamDomein }) {
   if (!token) throw new Error("de Cloudflare-sleutel (CLOUDFLARE_PROEF_TOKEN) ontbreekt");
   if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID ontbreekt");
@@ -278,6 +318,36 @@ export function cloudflareClient({ fetchFn = fetch, token, accountId, teamDomein
     async workerBestaat(naam) {
       try {
         await vraag(fetchFn, `${basis}/workers/scripts/${encodeURIComponent(naam)}`, { token });
+        return true;
+      } catch (fout) {
+        if (fout.status === 404) return false;
+        throw fout;
+      }
+    },
+
+    /**
+     * Zet een placeholder-Worker neer (503, zie PLACEHOLDER_MODULE) en zet zijn
+     * workers.dev-adres en de preview-adressen aan, zodat de Access op de Worker er al
+     * staat vóór de eerste uitrol. NAGAAN (U7): PUT /workers/scripts/{naam} met
+     * multipart, en POST /workers/scripts/{naam}/subdomain met `enabled` en
+     * `previews_enabled`.
+     */
+    async maakPlaceholder(naam) {
+      const pad = `/workers/scripts/${encodeURIComponent(naam)}`;
+      await cf(pad, { methode: "PUT", body: placeholderFormulier() });
+      await cf(`${pad}/subdomain`, {
+        methode: "POST",
+        body: { enabled: true, previews_enabled: true },
+      });
+    },
+
+    /**
+     * Verwijdert het Worker-script. Geeft false als hij er niet was (404).
+     * NAGAAN (U7): DELETE /workers/scripts/{naam}, zonder `force`.
+     */
+    async verwijderWorker(naam) {
+      try {
+        await cf(`/workers/scripts/${encodeURIComponent(naam)}`, { methode: "DELETE" });
         return true;
       } catch (fout) {
         if (fout.status === 404) return false;
