@@ -3,12 +3,12 @@
 <!-- Eén onderwerp per pull request. Schrijf het vanuit de gebruiker:
      "na deze wijziging kan de gebruiker …" -->
 
-## Vercel-preview
+## Cloudflare-preview
 
-<!-- Verplicht. Plak hier de preview-link van deze PR en klik hem zelf één keer aan.
+<!-- Verplicht. De workflow `Preview uitrollen` zet de link als reactie in de PR; plak hem hier en klik hem zelf één keer aan.
      Een dev-server op localhost telt niet: die kan niemand anders openen. -->
 
-Vercel-preview:
+Cloudflare-preview:
 
 ## Zelf nagelopen
 

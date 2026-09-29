@@ -25,3 +25,8 @@
 
 # Inloggen, rechten en betalingen.
 /src/features/auth/         @StageTwoAI
+
+# Wie bij welke app mag. Tijdens de proef is Stage Two zelf de klant; bij een klant
+# staat hier zijn IT, en maakt een ruleset de review van CODEOWNERS verplicht voor dit
+# pad (zie beheer/README.md).
+/beheer/toegang.json        @StageTwoAI

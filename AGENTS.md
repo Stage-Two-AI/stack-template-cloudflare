@@ -21,20 +21,20 @@ Copilot of een mens zonder agent. Er is geen tweede set afspraken ergens anders.
 ## Klaar is
 
 Een taak is klaar als: er een pull request open staat, **álle** checks groen zijn, en
-de Vercel-preview-link in de PR-beschrijving staat. Niet eerder. Staat er een check
+de Cloudflare-preview-link in de PR staat (de workflow `Preview uitrollen` zet hem er als reactie bij). Niet eerder. Staat er een check
 rood, meld dan wat er nog mist in plaats van "het is af".
 
 ## Stack
 
 Vite + React + TypeScript (strict) · Tailwind + shadcn/ui · React Router · Zod · pnpm.
-Hosting: Vercel. Fouten: Sentry. Achtergrond en het waarom: `docs/WERKWIJZE.md`.
+Hosting: Cloudflare (alleen de gebouwde bestanden, achter Cloudflare Access). Inloggen: via Cloudflare, dat ook de inlogdienst van Supabase is. Fouten: Sentry. Achtergrond en het waarom: `docs/WERKWIJZE.md`.
 
 **De database is een keuze, geen gegeven.** In `stack.config.json` staat `database`, en
 die heeft drie standen:
 
 | Stand | Wat dat betekent |
 |---|---|
-| `false` | geen database. De app draait alleen op Vercel; de `pnpm db:*`-commando's zijn niet van toepassing |
+| `false` | geen database. De app draait alleen op Cloudflare; de `pnpm db:*`-commando's zijn niet van toepassing |
 | `"gedeeld"` | de app gebruikt de database van een **andere** app, via haar contract (het schema `api`). Geen migraties, geen deploy naar Supabase, geen eigen RLS-tests |
 | `true` | de app bezit haar eigen database. De hele laag doet mee |
 
@@ -48,7 +48,7 @@ Zet de stand niet op eigen houtje om; `docs/WERKWIJZE.md` beschrijft wanneer wel
 geldt en wat er dan moet gebeuren.
 
 **Een app met database heeft een testdatabase** (`testdatabase` in `stack.config.json`):
-een tweede Supabase-project waar de Vercel-preview en lokaal kijken naar wijzen, en waar
+een tweede Supabase-project waar de Cloudflare-preview en lokaal kijken naar wijzen, en waar
 migraties bij een merge als eerste op draaien. Productie raak je vanaf een preview of je
 eigen computer dus nooit. Zet nooit de sleutels van productie in `.env.local`.
 
@@ -84,7 +84,7 @@ docs/solutions/        gedocumenteerde oplossingen van eerdere problemen (bugs, 
 
 ## Regels
 
-- **Previews gaan via de Vercel-preview van de PR.** Zet geen dev-server op localhost
+- **Previews gaan via de Cloudflare-preview van de PR.** Zet geen dev-server op localhost
   op om werk te laten zien. `pnpm dev` weigert om die reden; het is geen storing.
   Voor jezelf kijken tijdens het bouwen mag wél, expliciet met `STACK_ALLOW_DEV=1`
   ervoor en nooit tegen productie: volg `docs/routes/lokaal-kijken.md`.
@@ -93,9 +93,10 @@ docs/solutions/        gedocumenteerde oplossingen van eerdere problemen (bugs, 
 - **Databasetypes komen uit `pnpm db:types`**, nooit met de hand verzonnen. Klaagt
   TypeScript over een kolom, dan is het antwoord de typegeneratie, niet een `any`.
 - **Invoer van buiten** (formulieren, webhooks, API's) valideer je met Zod.
-- **Secrets nooit in de app-bundel.** Alleen de Supabase anon key mag in een
-  `VITE_`-variabele; die is expres publiek en wordt door RLS beschermd. Alles met een
-  geheime sleutel gaat naar een Supabase Edge Function.
+- **Secrets nooit in de app-bundel.** Alleen de Supabase anon key en de Sentry DSN
+  mogen in een `VITE_`-variabele; die zijn expres publiek (de anon key wordt door RLS
+  beschermd, de DSN kan alleen fouten insturen). Alles met een geheime sleutel gaat
+  naar een Supabase Edge Function.
 - **`supabase/functions/` draait op Deno**, de rest op Node en in de browser. Imports
   zijn niet uitwisselbaar tussen die twee, en die map valt buiten `tsconfig.json`.
 - **Databasewijzigingen altijd als migratie** in `supabase/migrations/`, nooit
@@ -106,15 +107,21 @@ docs/solutions/        gedocumenteerde oplossingen van eerdere problemen (bugs, 
   wijziging aan het contract en dus een aanvraag bij de eigenaar, geen bestand hier.
 - **Elke nieuwe tabel krijgt RLS aan, een `grant` én policies**, plus een test in
   `tests/rls/` die controleert dat gebruiker A niet bij de gegevens van B komt.
-- **Heeft de app geen database, verzin er dan geen.** Blijvende gegevens gaan naar Vercel
-  Blob, terugkerende taken naar Vercel Cron. Merk je dat je daar een database in aan het
-  namaken bent, dan is dat het signaal om `database` om te zetten, niet om door te
-  modderen.
+- **Heeft de app geen database, verzin er dan geen.** Moet de app iets bewaren of op
+  vaste tijden iets doen, dan is dat het signaal om `database` om te zetten (Supabase,
+  met Storage voor bestanden en `pg_cron` voor terugkerende taken). Gebruik nooit
+  opslag van Cloudflare zelf (D1, KV, R2, Durable Objects): Cloudflare serveert alleen
+  de app en regelt de toegang. `guard:cloudflare` laat alleen de sleutels in
+  `wrangler.jsonc` door die op de lijst staan en blokkeert de rest.
+- **De app heeft één adres, en dat staat achter Access.** Normaal is dat het eigen domein
+  (`routes` met `custom_domain: true`, `workers_dev: false`). Alleen zolang de klant nog
+  geen domein heeft, mag de tijdelijke stand: geen `routes` en `workers_dev: true`. Zet
+  die stand niet op eigen houtje aan of uit; `docs/WERKWIJZE.md` zegt wanneer hij mag.
 - **Wie code wijzigt, wijzigt ook een test.** Bugfix? Eerst een test die de bug
   reproduceert, dan de reparatie.
 - **Eén PR = één onderwerp.** Beschrijf wat je gewijzigd hebt en waarom.
 - **Pushen naar `main` kan niet en hoeft niet:** deployen gebeurt door te mergen.
-- **Niet met de hand deployen** (`vercel deploy`, `supabase db push`, `supabase link`).
+- **Niet met de hand deployen** (`wrangler deploy`, `wrangler login`, `supabase db push`, `supabase link`).
   Deployen doet GitHub Actions bij een merge; een handmatige ingreep laat de repo uit de
   pas lopen met de werkelijkheid.
 - **Migraties zijn aanvullend.** Voeg een kolom toe in de ene PR en gebruik hem in de

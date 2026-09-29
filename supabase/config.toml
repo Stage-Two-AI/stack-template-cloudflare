@@ -216,6 +216,10 @@ web3 = 30
 # provider = "hcaptcha"
 # secret = ""
 
+# Lokaal en in CI blijft inloggen met e-mail en wachtwoord aan: de RLS-tests en de
+# end-to-end test maken er gebruikers mee aan. In productie zet de inrichting
+# (beheer/inrichten-cloudflare.mjs) e-mail-inlog uit en Cloudflare als enige
+# inlogdienst aan; dat gebeurt via de Management API, niet via dit bestand.
 [auth.email]
 # Allow/disallow new user signups via email to your project.
 enable_signup = true

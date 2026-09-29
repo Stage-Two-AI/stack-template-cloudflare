@@ -18,10 +18,15 @@
     "in), maar de plugin-hook beschermt het wel: het bepaalt wie een melding krijgt.",
     "",
     "manifestFormaat zegt welke vorm dit bestand heeft; een oudere plugin stopt bij een",
-    "nieuwer formaat in plaats van half werk te doen."
+    "nieuwer formaat in plaats van half werk te doen.",
+    "",
+    "nietMeenemen: paden die alleen voor de Cloudflare-proef in deze repo staan (de",
+    "inrichting in beheer/ en de proef-workflows met de brede beheersleutels). Die gaan",
+    "nooit mee naar een afgeleide app; in U9 verhuizen ze naar stack-beheer."
   ],
   "manifestFormaat": 1,
   "stackVersion": 11,
+  "variant": "cloudflare",
   "vanDeTemplate": {
     "vervangen": [
       ".claude/hooks/guard.mjs",
@@ -31,19 +36,24 @@
       "CLAUDE.md",
       ".github/workflows/ci.yml",
       ".github/workflows/deploy-db.yml",
+      ".github/workflows/uitrollen.yml",
+      ".github/workflows/preview-uitrollen.yml",
       ".github/pull_request_template.md",
       ".github/dependabot.yml",
       "scripts/lib/changed-files.mjs",
       "scripts/lib/stack-config.mjs",
       "scripts/lib/db-types.mjs",
+      "scripts/lib/cloudflare-config.mjs",
       "scripts/guard-tests.mjs",
       "scripts/guard-migrations.mjs",
       "scripts/guard-rls.mjs",
       "scripts/guard-secrets.mjs",
       "scripts/guard-escape-hatches.mjs",
       "scripts/guard-template.mjs",
+      "scripts/guard-cloudflare.mjs",
       "scripts/check-types-in-sync.mjs",
       "scripts/write-db-types.mjs",
+      "scripts/db-url.mjs",
       "scripts/write-local-env.mjs",
       "scripts/write-test-env.mjs",
       "scripts/dev.mjs",
@@ -76,6 +86,9 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.rls.config.ts",
-    "playwright.config.ts"
-  ]
+    "playwright.config.ts",
+    "wrangler.jsonc",
+    "pnpm-workspace.yaml"
+  ],
+  "nietMeenemen": ["beheer/**", ".github/workflows/proef-*.yml"]
 }

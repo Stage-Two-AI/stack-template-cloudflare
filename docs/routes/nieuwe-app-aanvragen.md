@@ -58,7 +58,7 @@ nu al een eigen database; dat scheelt een verhuizing.
 
 `/stack:nieuwe-app` maakt de repo aan als kopie van de openbare template
 (github.com/Stage-Two-AI/stack-template), vult de naam in, zet de databasestand, zet de
-eerste versie op GitHub en beschermt de hoofdtak. De hosting (Vercel) en een eigen
+eerste versie op GitHub en beschermt de hoofdtak. De hosting (Cloudflare) en een eigen
 database (Supabase) koppelt Stage Two: daarvoor is toegang nodig die bewust niet op een
 werkcomputer staat. Laat Stage Two dus weten dat de app bestaat, met naam en link.
 

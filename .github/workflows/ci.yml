@@ -49,6 +49,12 @@ jobs:
       - name: Unittests
         run: pnpm test
 
+      # De inrichting van de Cloudflare-proef (beheer/) heeft eigen tests met node --test.
+      # Alleen in de template zelf: afgeleide apps krijgen beheer/ niet mee.
+      - name: Beheer-tests (Cloudflare-proef)
+        if: hashFiles('beheer/**/*.test.mjs') != ''
+        run: pnpm beheer:test
+
       - name: Bouwt het echt
         run: pnpm build
 
@@ -69,6 +75,12 @@ jobs:
 
       - name: Guard - bestanden van de gedeelde template
         run: pnpm guard:template
+
+      # Geen opslag van Cloudflare (D1, R2, KV, Durable Objects) en alleen toegestane
+      # sleutels in wrangler.jsonc. Staat in deze job, en dus in de verplichte check
+      # "Code": een PR die om opslag vraagt kan niet mergen.
+      - name: Guard - geen opslag van Cloudflare
+        run: pnpm guard:cloudflare
 
   # Alles wat een echte database nodig heeft. Draait tegen een lokale Supabase,
   # dus zonder sleutels van een cloudomgeving en zonder iets aan te raken wat leeft.
@@ -144,14 +156,14 @@ jobs:
 
       # Een app met een gedeelde database heeft geen omgeving om tegen te testen die
       # in de CI mag draaien: haar gegevens staan in het project van een andere app.
-      # De browsertest draait daar via de Vercel-preview van de PR.
+      # De browsertest draait daar via de Cloudflare-preview van de PR.
       - name: End-to-end test
         if: steps.stack.outputs.modus != 'gedeeld'
         run: pnpm test:e2e
 
       - name: End-to-end test overgeslagen
         if: steps.stack.outputs.modus == 'gedeeld'
-        run: echo "::notice::Deze app gebruikt de database van een andere app. Loop de Vercel-preview van deze PR na in plaats van te vertrouwen op een browsertest in CI."
+        run: echo "::notice::Deze app gebruikt de database van een andere app. Loop de Cloudflare-preview van deze PR na in plaats van te vertrouwen op een browsertest in CI."
 
       - name: Rapport bewaren als er iets faalde
         if: failure()

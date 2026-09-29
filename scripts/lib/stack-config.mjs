@@ -81,9 +81,9 @@ export function gedeeldeDatabase() {
 
 /**
  * De testdatabase: een tweede Supabase-project, los van productie, waar de
- * Vercel-preview naar wijst en waar je lokaal tegenaan mag kijken. Alleen zinvol
+ * Cloudflare-preview naar wijst en waar je lokaal tegenaan mag kijken. Alleen zinvol
  * als de app met een database praat. Optioneel: ontbreekt het blok, dan is er
- * geen testdatabase en gebruikt de preview wat er in Vercel staat ingesteld.
+ * geen testdatabase en gebruikt de preview wat er in de GitHub-omgeving `preview` staat.
  *
  *   "testdatabase": { "project_ref": "abcdefghijklmnopqrst" }
  *

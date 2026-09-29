@@ -31,8 +31,9 @@ misgaan:
 - Geen `any`, geen `@ts-ignore`, geen uitroepteken om een typefout weg te drukken.
   Los de echte fout op.
 - Alles wat van buiten komt, valideer je met Zod.
-- Geheime sleutels horen nooit in de app. Alleen de Supabase anon key mag in een
-  `VITE_`-variabele. Al het andere gaat naar een Edge Function.
+- Geheime sleutels horen nooit in de app. Alleen de Supabase anon key en de Sentry DSN
+  mogen in een `VITE_`-variabele; die zijn expres publiek. Al het andere gaat naar een
+  Edge Function.
 - Nieuwe tabel? Dan RLS aan én policies én een RLS-test. Volg dan de route
   `docs/routes/databasewijziging.md`.
 
@@ -76,9 +77,9 @@ git push -u origin <branch>
 gh pr create
 ```
 
-Vul het PR-formulier volledig in. De regel `Vercel-preview:` is niet optioneel: die
-link is de enige geldige manier om werk te laten zien. Wacht tot Vercel klaar is,
-plak de link erin en **klik hem zelf één keer aan** voordat je iemand vraagt te kijken.
+Vul het PR-formulier volledig in. De regel `Cloudflare-preview:` is niet optioneel: die
+link is de enige geldige manier om werk te laten zien. Wacht tot de workflow `Preview uitrollen`
+de link als reactie in de PR heeft gezet, plak hem erin en **klik hem zelf één keer aan** voordat je iemand vraagt te kijken.
 
 Zet nooit een dev-server op localhost op om iets te tonen. Die kan de klant niet
 openen en hij bewijst niet dat de gebouwde versie werkt. Lokaal kijken voor jezelf
@@ -90,7 +91,7 @@ Een taak is klaar als, en alleen als:
 
 1. de pull request open staat,
 2. **alle** checks groen zijn, en
-3. de Vercel-preview-link in de beschrijving staat en werkt.
+3. de Cloudflare-preview-link in de beschrijving staat en werkt.
 
 Niet eerder. Meld niet "het is af" bij een rode check of een ontbrekende preview;
 meld dan wat er nog mist.
@@ -107,6 +108,7 @@ meld dan wat er nog mist.
 | `guard:rls` | er is een tabel zonder beveiliging |
 | `guard:migrations` | je migratie kan data vernietigen; lees de melding en bevestig bewust |
 | `guard:template` | je wijzigde een bestand van de gedeelde template. Draai het terug en meld het bij Stage Two; wil je de nieuwste versie van de template, dan is dat `/stack:bijwerken` |
+| `guard:cloudflare` | `wrangler.jsonc` vraagt om opslag van Cloudflare (D1, R2, KV, Durable Objects), Worker-code of een sleutel die niet op de lijst staat. Gegevens horen in Supabase: haal de sleutel weg |
 | `db:types:check` | de gegenereerde types lopen achter. `pnpm db:types` en committen |
 
 Een rode check omzeilen door hem uit te zetten is nooit het antwoord. De check is

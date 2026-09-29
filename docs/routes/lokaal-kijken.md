@@ -7,7 +7,7 @@ past een bestand aan, en de browser op je eigen computer ververst meteen.
 Wat het niet is: het resultaat. Een adres dat met `localhost` begint werkt alleen op
 de computer waar het draait, en het bewijst niet dat de gebouwde versie werkt. Werk
 laten zien, laten beoordelen en live zetten gaat altijd via de route
-`docs/routes/verder-werken.md` en de Vercel-preview van de pull request. Deze route
+`docs/routes/verder-werken.md` en de Cloudflare-preview van de pull request. Deze route
 verandert daar niets aan; hij komt ervóór.
 
 ## Wat je nodig hebt
@@ -62,7 +62,7 @@ database is van een andere app en draait niet lokaal.
 
 ### Variant B: de testdatabase van deze app (geen Docker)
 
-Dezelfde database als waar de Vercel-preview naar wijst: een apart Supabase-project met
+Dezelfde database als waar de Cloudflare-preview naar wijst: een apart Supabase-project met
 testgegevens, los van productie. Dit is de snelste variant voor wie gewoon wil zien
 hoe een scherm eruitziet met echte-lijkende gegevens.
 

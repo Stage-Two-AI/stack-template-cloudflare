@@ -131,7 +131,7 @@ Bevestigd: destructieve migratie
    onaangeroerd. Lees dan de log van de workflow "Database bijwerken" en repareer met
    een nieuwe migratie.
 2. Daarna dezelfde migratie op **productie**.
-3. Vercel zet de nieuwe versie neer.
+3. GitHub Actions zet de nieuwe versie op Cloudflare neer.
 
 Migraties draaien **alleen bij een merge naar `main`**, nooit op een PR. Een PR mag
 de database van niemand aanraken.
