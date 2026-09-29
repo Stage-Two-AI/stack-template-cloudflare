@@ -20,7 +20,7 @@ import { magAanmelden } from "./lib/toegang.mjs";
 import { nepWolk } from "./nep-wolk.mjs";
 
 const TOEGANG = {
-  groepen: { stagetwo: { adressen: ["aiwincoholland@gmail.com"] } },
+  groepen: { stagetwo: { adressen: ["info@stagetwo.nl"] } },
   apps: { "cf-proef": ["stagetwo"] },
 };
 const ARG = {
@@ -859,7 +859,7 @@ test("toegang bijwerken: ongewijzigd bestand en passende gebruikers geven nul sc
   await richtIn(ARG, d);
   w.staat.gebruikers.push({
     id: "11111111-1111-4111-8111-111111111111",
-    email: "aiwincoholland@gmail.com",
+    email: "info@stagetwo.nl",
   });
   w.aanroepen.length = 0;
   await werkToegangBij({ ...ARG }, d);
@@ -870,18 +870,18 @@ test("toegang bijwerken: een verwijderd adres geeft een ban en afmelden via SQL"
   const w = nepWolk();
   const d = opzet(w, {
     toegang: {
-      groepen: { a: { adressen: ["aiwincoholland@gmail.com", "oud@elders.nl"] } },
+      groepen: { a: { adressen: ["info@stagetwo.nl", "oud@elders.nl"] } },
       apps: { "cf-proef": ["a"] },
     },
   });
   await richtIn(ARG, d);
   w.staat.gebruikers.push(
-    { id: "11111111-1111-4111-8111-111111111111", email: "aiwincoholland@gmail.com" },
+    { id: "11111111-1111-4111-8111-111111111111", email: "info@stagetwo.nl" },
     { id: "22222222-2222-4222-8222-222222222222", email: "oud@elders.nl" },
   );
   w.aanroepen.length = 0;
   d.toegang = {
-    groepen: { a: { adressen: ["aiwincoholland@gmail.com"] } },
+    groepen: { a: { adressen: ["info@stagetwo.nl"] } },
     apps: { "cf-proef": ["a"] },
   };
   const r = await werkToegangBij(ARG, d);
@@ -901,7 +901,7 @@ test("toegang bijwerken: wie weer op de lijst komt, krijgt de ban opgeheven", as
   const d = opzet(w);
   await richtIn(ARG, d);
   w.staat.gebruikers.push(
-    { id: "11111111-1111-4111-8111-111111111111", email: "aiwincoholland@gmail.com" },
+    { id: "11111111-1111-4111-8111-111111111111", email: "info@stagetwo.nl" },
     {
       id: "22222222-2222-4222-8222-222222222222",
       email: "oud@elders.nl",
@@ -909,7 +909,7 @@ test("toegang bijwerken: wie weer op de lijst komt, krijgt de ban opgeheven", as
     },
   );
   d.toegang = {
-    groepen: { a: { adressen: ["aiwincoholland@gmail.com", "oud@elders.nl"] } },
+    groepen: { a: { adressen: ["info@stagetwo.nl", "oud@elders.nl"] } },
     apps: { "cf-proef": ["a"] },
   };
   w.aanroepen.length = 0;
@@ -928,7 +928,7 @@ test("toegang bijwerken: een mislukte policy-verwijdering houdt het intrekken ni
   const d = opzet(w, {
     toegang: {
       groepen: {
-        a: { adressen: ["aiwincoholland@gmail.com"] },
+        a: { adressen: ["info@stagetwo.nl"] },
         oud: { adressen: ["oud@elders.nl"] },
       },
       apps: { "cf-proef": ["a", "oud"] },
@@ -937,7 +937,7 @@ test("toegang bijwerken: een mislukte policy-verwijdering houdt het intrekken ni
   await richtIn(ARG, d);
   w.staat.gebruikers.push({ id: "22222222-2222-4222-8222-222222222222", email: "oud@elders.nl" });
   d.toegang = {
-    groepen: { a: { adressen: ["aiwincoholland@gmail.com"] } },
+    groepen: { a: { adressen: ["info@stagetwo.nl"] } },
     apps: { "cf-proef": ["a"] },
   };
   const origineel = w.fetchFn;

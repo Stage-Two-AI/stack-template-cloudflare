@@ -393,7 +393,7 @@ test("vangnet: de SQL-functie laat alleen de gekozen domeinen en adressen door",
   const sql = vangnetSql(KLANT, "cf-proef", "cf_proef_voor_aanmelden");
   assert.match(sql, /create or replace function public\.cf_proef_voor_aanmelden\(event jsonb\)/);
   assert.match(sql, /domein = any \(array\['klant\.nl'\]::text\[\]\)/);
-  assert.match(sql, /adres = any \(array\['aiwincoholland@gmail\.com'\]::text\[\]\)/);
+  assert.match(sql, /adres = any \(array\['info@stagetwo\.nl'\]::text\[\]\)/);
   assert.match(sql, /not \(adres = any \(array\['jan@klant\.nl'\]::text\[\]\)\)/);
   assert.match(sql, /'http_code', 403/);
   assert.match(
