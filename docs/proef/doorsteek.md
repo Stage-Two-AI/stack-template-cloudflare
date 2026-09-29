@@ -26,7 +26,9 @@ Doe het in deze volgorde. Na elke stap: uitkomst en bewijs in de tabel hieronder
 
 1. **Voorwaarden.** P1 tot en met P4 uit `beheer/README.md`. Maak daarbij de
    GitHub-omgevingen `proef-beheer`, `production` en `preview` aan, alle drie beperkt tot
-   `main`.
+   `main`. Voor `preview` kan dat, omdat alleen `preview-uitrollen.yml` (altijd de versie
+   van `main`) die omgeving gebruikt; de PR-job bouwt zonder sleutels. Zet daarnaast de
+   repo-variabelen `PREVIEW_VITE_*` uit `beheer/README.md`, anders komt er geen preview.
 2. **Droogloop.** `gh workflow run proef-inrichten.yml --ref main -f app=cf-proef -f droogloop=true`.
    Controleer in het logboek de geplande stappen, met name de redirect-lijst: daarin mag op
    de plek van het workers.dev-subdomein geen `*` staan.
@@ -131,4 +133,5 @@ terug.
   Supabase-plan.
 - Restrisico, ook na de proef: de uitrolsleutel van de preview kan technisch ook
   productie overschrijven, want Cloudflare kent geen sleutel die alleen previews mag.
-  De omgevingen beperken wie hem ziet, niet wat hij kan.
+  Code uit een PR ziet hem niet meer: alleen `preview-uitrollen.yml` op `main` gebruikt
+  hem, en die draait niets uit de PR. Wie op `main` mag schrijven, kan hem wel misbruiken.

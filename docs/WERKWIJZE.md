@@ -169,7 +169,7 @@ eigenaar.
 Wat erop draait:
 
 - **De Cloudflare-preview van elke pull request.** Klikken, opslaan, verwijderen in een preview
-  raakt nooit echte gegevens. De preview krijgt uit de GitHub-omgeving `preview` de URL en de anon key van
+  raakt nooit echte gegevens. De preview krijgt uit de repo-variabelen `PREVIEW_VITE_*` de URL en de anon key van
   het testproject, en `VITE_OMGEVING=test`; de app laat dan een balk zien dat dit de
   testomgeving is. Productie op `main` krijgt het productieproject en geen balk.
 - **Lokaal kijken op je eigen computer**, zonder Docker: `pnpm env:test` (route
@@ -188,7 +188,7 @@ Actions-secret `SUPABASE_TEST_DB_PASSWORD`:
 }
 ```
 
-Ontbreekt het blok, dan is er geen testdatabase: de preview gebruikt wat er in de GitHub-omgeving `preview`
+Ontbreekt het blok, dan is er geen testdatabase: de preview gebruikt wat er in de repo-variabelen `PREVIEW_VITE_*`
 staat ingesteld en migraties gaan rechtstreeks naar productie. Dat is toegestaan, maar het
 is de uitzondering en niet de standaard. Wat de testdatabase kost: een tweede project bij
 Supabase, dat je kunt pauzeren als er een tijd niet gebouwd wordt.

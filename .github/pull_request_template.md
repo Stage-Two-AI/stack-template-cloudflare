@@ -5,7 +5,7 @@
 
 ## Cloudflare-preview
 
-<!-- Verplicht. De workflow `uitrollen` zet de link als reactie in de PR; plak hem hier en klik hem zelf één keer aan.
+<!-- Verplicht. De workflow `Preview uitrollen` zet de link als reactie in de PR; plak hem hier en klik hem zelf één keer aan.
      Een dev-server op localhost telt niet: die kan niemand anders openen. -->
 
 Cloudflare-preview:

@@ -257,23 +257,38 @@ export function magAanmelden(email, toegang, app) {
 /**
  * Trekt de toegang in van wie niet meer past: een ban (lang genoeg om "voorgoed" te
  * zijn) en afmelden van alle sessies. Zonder dat laatste loopt een bestaande sessie
- * gewoon door; refresh-tokens verlopen op het gratis plan niet. Wie past, of al geband
- * is, blijft onaangeroerd; wie "onbekend" is (IdP-groep) wordt gemeld, niet geband.
+ * gewoon door; refresh-tokens verlopen op het gratis plan niet. Wie al geband is,
+ * blijft onaangeroerd; wie "onbekend" is (IdP-groep) wordt gemeld, niet geband.
+ *
+ * Wie past en nog een actieve ban heeft (eerder ingetrokken, nu weer op de lijst),
+ * krijgt de ban opgeheven via `ontban`. Wie past zonder ban, blijft onaangeroerd.
  */
-export async function trekIn({ gebruikers, toegang, app, ban, afmelden, nu = new Date() }) {
-  const uit = { ingetrokken: [], onaangeroerd: 0, alIngetrokken: [], onbekend: [] };
+export async function trekIn({ gebruikers, toegang, app, ban, afmelden, ontban, nu = new Date() }) {
+  const uit = {
+    ingetrokken: [],
+    toegelaten: [],
+    onaangeroerd: 0,
+    alIngetrokken: [],
+    onbekend: [],
+  };
   for (const g of gebruikers) {
     if (!g.email) continue;
     const oordeel = magAanmelden(g.email, toegang, app);
+    const geband = Boolean(g.banned_until && new Date(g.banned_until) > nu);
     if (oordeel === "ja") {
-      uit.onaangeroerd += 1;
+      if (geband) {
+        await ontban(g.id);
+        uit.toegelaten.push(g.email);
+      } else {
+        uit.onaangeroerd += 1;
+      }
       continue;
     }
     if (oordeel === "onbekend") {
       uit.onbekend.push(g.email);
       continue;
     }
-    if (g.banned_until && new Date(g.banned_until) > nu) {
+    if (geband) {
       uit.alIngetrokken.push(g.email);
       continue;
     }
@@ -285,6 +300,9 @@ export async function trekIn({ gebruikers, toegang, app, ban, afmelden, nu = new
 }
 
 export const BAN_DUUR = "876000h";
+
+/** Zo heft Supabase een ban op (`updateUserById`). */
+export const GEEN_BAN = "none";
 
 // ---------------------------------------------------------------- vangnet (R18)
 

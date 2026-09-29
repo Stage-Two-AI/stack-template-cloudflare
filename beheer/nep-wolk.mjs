@@ -222,7 +222,8 @@ export function nepWolk({
       async updateUserById(id, attrs) {
         log("updateUserById", { body: { id, ...attrs } });
         const g = staat.gebruikers.find((q) => q.id === id);
-        g.banned_until = "2126-01-01T00:00:00Z";
+        if (attrs.ban_duration === "none") delete g.banned_until;
+        else g.banned_until = "2126-01-01T00:00:00Z";
         return { data: { user: g }, error: null };
       },
     };

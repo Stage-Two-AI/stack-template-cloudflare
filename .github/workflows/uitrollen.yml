@@ -1,10 +1,14 @@
 name: Uitrollen
 
 # Productie bij een merge naar main; een preview per pull request, achter dezelfde
-# login als productie. Sleutels staan in GitHub-omgevingen:
+# login als productie. De preview gaat in twee delen: de job "Preview" hieronder bouwt
+# de PR zonder sleutels en bewaart dist, en preview-uitrollen.yml (altijd de versie van
+# main) uploadt dat met de preview-sleutel. Zo ziet code uit een PR nooit een sleutel.
 #   production  CLOUDFLARE_API_TOKEN (alleen uitrollen), vars VITE_*, CLOUDFLARE_ACCOUNT_ID
-#   preview     een eigen CLOUDFLARE_API_TOKEN (alleen uitrollen), vars VITE_* van de test
-# De omgeving production is beperkt tot main, zodat een PR-tak die sleutel nooit ziet.
+#   preview     een eigen CLOUDFLARE_API_TOKEN (alleen uitrollen), CLOUDFLARE_ACCOUNT_ID;
+#               alleen gebruikt door preview-uitrollen.yml
+#   repo-vars   PREVIEW_VITE_*: de openbare waarden van de test (ze staan toch in de bundel)
+# De omgevingen production en preview zijn beperkt tot main.
 on:
   push:
     branches: [main]
@@ -76,24 +80,24 @@ jobs:
 
   preview:
     name: Preview
-    # Alleen PR's uit deze repo: een fork krijgt geen sleutels en geen preview.
+    # Alleen PR's uit deze repo: een fork krijgt geen preview. Deze job noemt geen
+    # omgeving en leest geen secrets; uploaden doet preview-uitrollen.yml.
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    environment: preview
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v7
 
       - name: Is alles ingericht?
         id: check
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PREVIEW_VITE_SUPABASE_URL: ${{ vars.PREVIEW_VITE_SUPABASE_URL }}
         run: |
           node -e "import('./scripts/lib/cloudflare-config.mjs').then((m) => m.cloudflareConfig())"
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::notice::CLOUDFLARE_API_TOKEN ontbreekt in omgeving preview. Er komt geen preview voor deze PR."
+          modus=$(node -e "import('./scripts/lib/stack-config.mjs').then((m) => console.log(m.databaseModus()))")
+          if [ "$modus" != "geen" ] && [ -z "$PREVIEW_VITE_SUPABASE_URL" ]; then
+            echo "::notice::De repo-variabele PREVIEW_VITE_SUPABASE_URL ontbreekt. De preview is nog niet ingericht; er komt geen preview voor deze PR."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -112,42 +116,20 @@ jobs:
       - name: Bouwen (testomgeving)
         if: steps.check.outputs.skip != 'true'
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-          VITE_SUPABASE_SCHEMA: ${{ vars.VITE_SUPABASE_SCHEMA }}
-          VITE_INLOGDIENST: ${{ vars.VITE_INLOGDIENST }}
+          VITE_SUPABASE_URL: ${{ vars.PREVIEW_VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.PREVIEW_VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_SCHEMA: ${{ vars.PREVIEW_VITE_SUPABASE_SCHEMA }}
+          VITE_INLOGDIENST: ${{ vars.PREVIEW_VITE_INLOGDIENST }}
+          VITE_SENTRY_DSN: ${{ vars.PREVIEW_VITE_SENTRY_DSN }}
           VITE_OMGEVING: test
         run: pnpm build
 
-      - name: Preview uploaden
-        id: upload
+      # preview-uitrollen.yml haalt dit op en uploadt het.
+      - name: Gebouwde preview bewaren
         if: steps.check.outputs.skip != 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_SEND_METRICS: "false"
-        run: |
-          pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.pull_request.number }} | tee upload.log
-          url=$(grep -oE 'https://pr-[0-9]+-[^ ]+\.workers\.dev' upload.log | head -n 1)
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-
-      - name: Link in de PR zetten
-        if: steps.check.outputs.skip != 'true' && steps.upload.outputs.url != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          URL: ${{ steps.upload.outputs.url }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          # Eén reactie per PR, die bij elke push wordt bijgewerkt.
-          markering='<!-- cloudflare-preview -->'
-          tekst="$markering
-          Cloudflare-preview: $URL
-
-          Deze link staat achter dezelfde login als productie en toont de testbalk."
-          bestaand=$(gh api "repos/${{ github.repository }}/issues/$PR/comments" --paginate \
-            --jq ".[] | select(.body | startswith(\"$markering\")) | .id" | head -n 1)
-          if [ -n "$bestaand" ]; then
-            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$bestaand" -f body="$tekst" > /dev/null
-          else
-            gh api -X POST "repos/${{ github.repository }}/issues/$PR/comments" -f body="$tekst" > /dev/null
-          fi
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-dist
+          path: dist
+          retention-days: 3
+          if-no-files-found: error

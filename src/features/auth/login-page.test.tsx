@@ -44,6 +44,21 @@ describe("LoginPage met cloudflare", () => {
     expect(screen.getByRole("button", { name: "Opnieuw proberen" })).toBeInTheDocument();
   });
 
+  it("laat Supabase terugsturen naar /login, zodat een weigering daar zichtbaar blijft", async () => {
+    render(<LoginPage dienst="cloudflare" />);
+    await waitFor(() => expect(signInWithOAuth).toHaveBeenCalledTimes(1));
+    expect(signInWithOAuth.mock.calls[0]?.[0].options.redirectTo).toBe(
+      `${window.location.origin}/login`,
+    );
+  });
+
+  it("stuurt ook zonder uitleg niet opnieuw door na ?error=access_denied", async () => {
+    window.history.replaceState(null, "", "/login?error=access_denied");
+    render(<LoginPage dienst="cloudflare" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("access_denied");
+    expect(signInWithOAuth).not.toHaveBeenCalled();
+  });
+
   it("toont een uitleg en een knop als doorsturen mislukt", async () => {
     signInWithOAuth.mockResolvedValue({ data: {}, error: { message: "provider niet gevonden" } });
     render(<LoginPage dienst="cloudflare" />);
@@ -65,6 +80,9 @@ describe("LoginPage met andere diensten", () => {
     await userEvent.type(screen.getByLabelText("E-mailadres"), "piet@klant.nl");
     await userEvent.click(screen.getByRole("button", { name: "Stuur inloglink" }));
     expect(signInWithOtp.mock.calls[0]?.[0].email).toBe("piet@klant.nl");
+    expect(signInWithOtp.mock.calls[0]?.[0].options.emailRedirectTo).toBe(
+      `${window.location.origin}/login`,
+    );
     expect(await screen.findByRole("status")).toHaveTextContent("mail");
   });
 

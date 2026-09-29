@@ -21,7 +21,7 @@ Copilot of een mens zonder agent. Er is geen tweede set afspraken ergens anders.
 ## Klaar is
 
 Een taak is klaar als: er een pull request open staat, **álle** checks groen zijn, en
-de Cloudflare-preview-link in de PR staat (de workflow `uitrollen` zet hem er als reactie bij). Niet eerder. Staat er een check
+de Cloudflare-preview-link in de PR staat (de workflow `Preview uitrollen` zet hem er als reactie bij). Niet eerder. Staat er een check
 rood, meld dan wat er nog mist in plaats van "het is af".
 
 ## Stack

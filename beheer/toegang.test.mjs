@@ -245,6 +245,37 @@ test("intrekken: iedereen past, dan nul schrijfacties", async () => {
   assert.deepEqual(log, []);
 });
 
+test("intrekken: wie geband was en weer op de lijst staat, wordt weer toegelaten", async () => {
+  const gebruikers = [
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      email: "piet@klant.nl",
+      banned_until: "2126-01-01T00:00:00Z",
+    },
+    { id: "22222222-2222-4222-8222-222222222222", email: "kees@klant.nl" },
+    {
+      id: "33333333-3333-4333-8333-333333333333",
+      email: "anna@klant.nl",
+      banned_until: "2020-01-01T00:00:00Z",
+    },
+  ];
+  const log = [];
+  const r = await trekIn({
+    gebruikers,
+    toegang: KLANT,
+    app: "cf-proef",
+    ban: async (id) => log.push(`ban ${id}`),
+    afmelden: async (id) => log.push(`afmelden ${id}`),
+    ontban: async (id) => log.push(`ontban ${id}`),
+    nu: new Date("2026-09-27T00:00:00Z"),
+  });
+  // Alleen de actieve ban wordt opgeheven; wie nooit of niet meer geband is, blijft ongemoeid.
+  assert.deepEqual(log, ["ontban 11111111-1111-4111-8111-111111111111"]);
+  assert.deepEqual(r.toegelaten, ["piet@klant.nl"]);
+  assert.equal(r.onaangeroerd, 2);
+  assert.deepEqual(r.ingetrokken, []);
+});
+
 test("intrekken: bij een groep met idp_groepen wordt een onbekend adres niet blind geband", async () => {
   const t = { groepen: { it: { idp_groepen: ["g1"] } }, apps: { a: ["it"] } };
   const log = [];

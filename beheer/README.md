@@ -46,8 +46,17 @@ Verder in omgeving `proef-beheer`, als variabelen (geen secrets):
 | `CLOUDFLARE_GROEPEN_IDP` | optioneel: `azureAD:<id>` als een groep `idp_groepen` gebruikt |
 
 Beperk de omgevingen `proef-beheer`, `production` en `preview` tot de tak `main`
-(Settings > Environments > Deployment branches). De omgevingen `production` en
-`preview` moeten bestaan voordat de inrichting draait; het script maakt ze niet aan.
+(Settings > Environments > Deployment branches). Dat kan ook voor `preview`, omdat de
+preview in twee delen gaat: de PR-job in `uitrollen.yml` bouwt zonder omgeving en
+zonder sleutels, en `preview-uitrollen.yml` uploadt het resultaat vanaf `main`. De
+omgevingen `production` en `preview` moeten bestaan voordat de inrichting draait; het
+script maakt ze niet aan.
+
+De PR-job leest de openbare waarden van de test als repo-variabelen (geen secrets, ze
+staan toch in de bundel): `PREVIEW_VITE_SUPABASE_URL`, `PREVIEW_VITE_SUPABASE_ANON_KEY`,
+`PREVIEW_VITE_INLOGDIENST` en optioneel `PREVIEW_VITE_SUPABASE_SCHEMA` en
+`PREVIEW_VITE_SENTRY_DSN`. Ontbreekt `PREVIEW_VITE_SUPABASE_URL` bij een app met
+database, dan meldt de PR-job dat en komt er geen preview.
 
 Voor `deploy-db.yml` is ook het repo-secret `SUPABASE_ACCESS_TOKEN` nodig. Dat zet het
 script niet; zet het zelf als de migraties mee moeten draaien.

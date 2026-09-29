@@ -60,6 +60,7 @@ import {
 } from "./lib/supabase.mjs";
 import {
   BAN_DUUR,
+  GEEN_BAN,
   gewenstePolicies,
   kaleNaamConflicten,
   koppelPolicies,
@@ -665,6 +666,7 @@ export async function werkToegangBij(arg, d) {
   const gekoppeld = await koppelPolicies(cf, t, apps, sync.ids);
 
   const ingetrokken = {};
+  const toegelaten = {};
   const onbekend = {};
   const doelApps = arg.app ? [arg.app] : Object.keys(t.apps);
   for (const app of doelApps) {
@@ -682,8 +684,13 @@ export async function werkToegangBij(arg, d) {
         if (error) throw new Error(`Supabase updateUserById: ${error.message ?? error}`);
       },
       afmelden: (id) => supabase.voerSqlUit(project.ref, afmeldSql(id)),
+      ontban: async (id) => {
+        const { error } = await admin.updateUserById(id, { ban_duration: GEEN_BAN });
+        if (error) throw new Error(`Supabase updateUserById: ${error.message ?? error}`);
+      },
     });
     if (r.ingetrokken.length) ingetrokken[app] = r.ingetrokken;
+    if (r.toegelaten.length) toegelaten[app] = r.toegelaten;
     if (r.onbekend.length) onbekend[app] = r.onbekend;
   }
   // Pas na het intrekken: een policy die nog aan een app hangt, weigert Cloudflare te
@@ -698,6 +705,7 @@ export async function werkToegangBij(arg, d) {
   return {
     acties: [...sync.acties, ...gekoppeld, ...weg.map((n) => `policy ${n} verwijderd`)],
     ingetrokken,
+    toegelaten,
     onbekend,
     waarschuwingen,
   };

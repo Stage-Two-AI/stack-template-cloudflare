@@ -485,6 +485,31 @@ test("toegang bijwerken: een verwijderd adres geeft een ban en afmelden via SQL"
   assert.deepEqual(r.ingetrokken, { "cf-proef": ["oud@elders.nl"] });
 });
 
+test("toegang bijwerken: wie weer op de lijst komt, krijgt de ban opgeheven", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(ARG, d);
+  w.staat.gebruikers.push(
+    { id: "11111111-1111-4111-8111-111111111111", email: "aiwincoholland@gmail.com" },
+    {
+      id: "22222222-2222-4222-8222-222222222222",
+      email: "oud@elders.nl",
+      banned_until: "2126-01-01T00:00:00Z",
+    },
+  );
+  d.toegang = {
+    groepen: { a: { adressen: ["aiwincoholland@gmail.com", "oud@elders.nl"] } },
+    apps: { "cf-proef": ["a"] },
+  };
+  w.aanroepen.length = 0;
+  const r = await werkToegangBij(ARG, d);
+  const updates = w.aanroepen.filter((a) => a.methode === "updateUserById").map((a) => a.body);
+  assert.deepEqual(updates, [{ id: "22222222-2222-4222-8222-222222222222", ban_duration: "none" }]);
+  assert.equal(w.staat.gebruikers[1].banned_until, undefined);
+  assert.deepEqual(r.toegelaten, { "cf-proef": ["oud@elders.nl"] });
+  assert.deepEqual(r.ingetrokken, {});
+});
+
 // ---------------------------------------------------------------- uitvoer en grenzen
 
 test("toegang bijwerken: een mislukte policy-verwijdering houdt het intrekken niet tegen", async () => {

@@ -12,9 +12,14 @@ const KNOPTEKST: Partial<Record<Inlogdienst, string>> = {
   google: "Inloggen met Google",
 };
 
-/** Waar de inlogdienst de gebruiker naar terugstuurt: de startpagina van deze app. */
+/**
+ * Waar de inlogdienst de gebruiker naar terugstuurt: de inlogpagina zelf. Na een
+ * geslaagde login stuurt die door naar de startpagina. Na een weigering blijft de fout
+ * in het adres staan en toont deze pagina hem; via `/` zou de doorverwijzing naar
+ * `/login` de fout uit het adres halen en begon het inloggen opnieuw, eindeloos.
+ */
 function terugNaar(): string {
-  return `${window.location.origin}/`;
+  return `${window.location.origin}/login`;
 }
 
 /**

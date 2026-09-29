@@ -77,7 +77,7 @@ gh pr create
 ```
 
 Vul het PR-formulier volledig in. De regel `Cloudflare-preview:` is niet optioneel: die
-link is de enige geldige manier om werk te laten zien. Wacht tot de workflow `uitrollen`
+link is de enige geldige manier om werk te laten zien. Wacht tot de workflow `Preview uitrollen`
 de link als reactie in de PR heeft gezet, plak hem erin en **klik hem zelf één keer aan** voordat je iemand vraagt te kijken.
 
 Zet nooit een dev-server op localhost op om iets te tonen. Die kan de klant niet
