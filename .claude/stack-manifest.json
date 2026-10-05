@@ -1,7 +1,7 @@
 {
   "$beschrijving": [
     "Welke bestanden van de gedeelde template zijn en welke van dit project.",
-    "De skill /stack:bijwerken (Stage Two-plugin) en de beheerde run van Stage Two",
+    "De skill /stack-cloudflare:updaten (Stage Two-plugin) en de beheerde run van Stage Two",
     "gebruiken dit om alleen de template-bestanden bij te werken, zonder ooit aan het",
     "werk van de klant te komen.",
     "",
@@ -25,11 +25,12 @@
     "nooit mee naar een afgeleide app; in U9 verhuizen ze naar stack-beheer."
   ],
   "manifestFormaat": 1,
-  "stackVersion": 11,
+  "stackVersion": 12,
   "variant": "cloudflare",
   "vanDeTemplate": {
     "vervangen": [
       ".claude/hooks/guard.mjs",
+      ".claude/launch.json",
       ".claude/settings.json",
       ".claude/stack-manifest.json",
       ".claude/stack-version",
@@ -57,10 +58,10 @@
       "scripts/write-local-env.mjs",
       "scripts/write-test-env.mjs",
       "scripts/dev.mjs",
+      "scripts/preview.mjs",
       "docs/WERKWIJZE.md",
       "docs/routes/verder-werken.md",
       "docs/routes/databasewijziging.md",
-      "docs/routes/nieuwe-app-aanvragen.md",
       "docs/routes/lokaal-kijken.md",
       "biome.json"
     ],

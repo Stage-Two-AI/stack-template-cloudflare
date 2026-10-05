@@ -10,6 +10,19 @@ laten zien, laten beoordelen en live zetten gaat altijd via de route
 `docs/routes/verder-werken.md` en de Cloudflare-preview van de pull request. Deze route
 verandert daar niets aan; hij komt ervóór.
 
+## In de Claude-app: dit gaat vanzelf
+
+Werk je in het tabblad Code van de Claude-app, dan hoef je deze route niet te volgen.
+De app start de preview zelf, volgens `.claude/launch.json`: dat draait
+`scripts/preview.mjs`, en dat regelt de pakketten, zet `.env.local` op de testdatabase
+(variant B hieronder) en start de app. Je ziet hem in het venster naast het gesprek, en
+de assistent kijkt daar zelf ook mee om zijn werk te controleren. De preview weigert te
+starten als `.env.local` naar een andere database wijst dan de testdatabase of een
+lokale Supabase.
+
+De rest van deze route is voor andere assistenten (Codex, Cursor, …) en voor wie het met
+de hand doet.
+
 ## Wat je nodig hebt
 
 Eenmalig op de computer waar je werkt. Je assistent kan dit voor je controleren en
@@ -73,8 +86,11 @@ er niet, dan heeft deze app geen testdatabase: gebruik variant A, of vraag Stage
 pnpm env:test      # schrijft .env.local met de testdatabase erin
 ```
 
-De eerste keer vraagt dit om een login bij Supabase op deze computer
-(`pnpm exec supabase login`, opent de browser). Lukt dat niet, dan zegt het script
+Staat de publieke sleutel van de testdatabase in `stack.config.json`
+(`testdatabase.anon_key`), dan is dat alles. Staat hij er niet, dan vraagt dit de eerste
+keer om een login bij Supabase op deze computer (`pnpm exec supabase login`, opent de
+browser); vraag Stage Two liever de sleutel in de config te zetten, want een
+werkcomputer hoort geen toegang tot Supabase te hebben. Lukt het niet, dan zegt het script
 precies wat je met de hand in `.env.local` zet: de URL van het testproject, de publieke
 anon-sleutel (Supabase dashboard > Project Settings > API keys > anon / public) en het
 schema (`public`, of `api` als deze app op `"gedeeld"` staat).
@@ -102,6 +118,8 @@ een assistent werk "oplevert".
 
 ## Voor de assistent
 
+- In de Claude-app gebruik je de preview (`.claude/launch.json`), geen dev-server in
+  Bash. De rest van deze lijst geldt voor andere assistenten.
 - Zet de dev-server alleen op als de gebruiker daarom vraagt of als je hem hebt
   voorgesteld en de gebruiker ja zegt. Nooit uit jezelf als vervanging van de preview.
 - Start hem op de achtergrond en laat hem draaien terwijl je bouwt; de gebruiker kijkt

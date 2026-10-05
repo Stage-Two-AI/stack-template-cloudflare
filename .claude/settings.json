@@ -1,14 +1,14 @@
 {
   "extraKnownMarketplaces": {
-    "stagetwo": {
+    "stagetwo-cloudflare": {
       "source": {
         "source": "github",
-        "repo": "Stage-Two-AI/stack-plugin"
+        "repo": "Stage-Two-AI/stack-plugin-cloudflare"
       },
       "autoUpdate": true
     }
   },
   "enabledPlugins": {
-    "stack@stagetwo": true
+    "stack-cloudflare@stagetwo-cloudflare": true
   }
 }

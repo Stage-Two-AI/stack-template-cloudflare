@@ -1,11 +1,9 @@
 # <projectnaam>
 
-> **Cloudflare-proefvariant.** Deze template is een proef naast `Stage-Two-AI/stack-template`:
-> de app draait op Cloudflare in plaats van Vercel, en Cloudflare is het enige punt waar
-> inloggen en toegang geregeld worden. Waarom en hoe staat in het plan
-> `docs/plans/2026-09-27-1712-feat-cloudflare-stack-proef-plan.md` in `Stage-Two-AI/Stack`.
-> Gebruik deze variant nog niet voor klanten.
-> Stand van de proef, het draaiboek en de uitkomst: `docs/proef/doorsteek.md`.
+> **Cloudflare-spoor van de Stage Two-stack.** Deze template hoort bij de plugin
+> `Stage-Two-AI/stack-plugin-cloudflare`: de app draait op Cloudflare, en Cloudflare is het
+> enige punt waar inloggen en toegang geregeld worden. De gegevens staan bij Supabase.
+> Het Vercel-spoor is `Stage-Two-AI/stack-template` met de plugin `Stage-Two-AI/stack-plugin`.
 
 <!-- Vervang <projectnaam> en schrijf hieronder in één zin wat deze app doet,
      in gewone taal, vanuit de gebruiker. -->
@@ -40,10 +38,10 @@ hoort die zelf te pakken. Doet hij dat niet, zeg dan: "volg de route in
 docs/routes/verder-werken.md".
 
 **Werk je met Claude Code?** Dan vraagt Claude Code bij het openen van deze map of je de
-Stage Two-plugin wilt installeren. Zeg ja. Die plugin geeft je assistent de vaste routes
-als commando's (`/stack:verder-werken` en zo verder), houdt hem tegen als hij aan de
-gedeelde werkwijze wil zitten, en meldt het als er een nieuwere versie van die werkwijze
-is; ophalen doe je dan zelf met `/stack:bijwerken`. Wat de plugin precies doet en hoe je
+Stage Two-plugin wilt installeren. Zeg ja. Die plugin geeft je assistent vier commando's
+(`/stack-cloudflare:installatie`, `/stack-cloudflare:nieuwe-app`, `/stack-cloudflare:verder-werken` en `/stack-cloudflare:updaten`),
+houdt hem tegen als hij aan de gedeelde werkwijze wil zitten, en meldt het als er een
+nieuwere versie van die werkwijze is; ophalen doe je dan zelf met `/stack-cloudflare:updaten`. Wat de plugin precies doet en hoe je
 hem installeert staat op [github.com/Stage-Two-AI/stack-plugin](https://github.com/Stage-Two-AI/stack-plugin).
 Werk je met een andere assistent, dan mis je alleen die gemakken: de afspraken en de
 controles gelden voor iedereen.
@@ -94,9 +92,8 @@ haast hebt.
 
 - **Een wijziging aan deze app**: gewoon vragen; de route staat in
   `docs/routes/verder-werken.md`.
-- **Een compleet nieuwe app**: typ `/stack:nieuwe-app` in een lege map; de route staat in
-  `docs/routes/nieuwe-app-aanvragen.md`. Een nieuwe app krijgt een eigen werkplaats, dus
-  die kun je niet vanuit deze map beginnen.
+- **Een compleet nieuwe app**: typ `/stack-cloudflare:nieuwe-app` in een lege map. Een nieuwe app
+  krijgt een eigen werkplaats, dus die kun je niet vanuit deze map beginnen.
 - **Iets aan de instellingen, toegang of een rekening**: dat regelt Stage Two.
 
 ## Voor wie het naadje van de kous wil
@@ -121,18 +118,20 @@ Verbetert Stage Two de werkwijze, dan krijgt deze app dat als versie erbij: een 
 de bestanden hier (de controles, de afspraken, de routes) komt uit de template en wordt
 in zijn geheel vervangen; alles wat van dit project is, blijft staan. Wat waarvan is,
 staat in `.claude/stack-manifest.json`. Ophalen doe je zelf, wanneer jij wilt, met
-`/stack:bijwerken` uit de Stage Two-plugin; het komt als pull request die jij bekijkt en
+`/stack-cloudflare:updaten` uit de Stage Two-plugin; het komt als pull request die jij bekijkt en
 goedkeurt. De versie waar deze app op staat, staat in `.claude/stack-version`.
 
 ## De app op je eigen computer zien terwijl je bouwt (optioneel)
 
-Wil je niet op de preview wachten om te zien wat je assistent net gemaakt heeft? Dan
-kan de app op je eigen computer draaien, en ververst de browser bij elke wijziging.
-Vraag je assistent "laat de app lokaal zien" of "controleer of ik lokaal kan kijken";
-de route staat in `docs/routes/lokaal-kijken.md`, inclusief wat er op je computer
-geïnstalleerd moet zijn (git, Node, pnpm) en welke database je daarvoor gebruikt.
+Wil je niet op de preview-link wachten om te zien wat je assistent net gemaakt heeft?
+In de Claude-app hoef je daar niets voor te doen: je assistent start de app op je eigen
+computer en toont hem in het venster naast het gesprek. Hij kijkt daar zelf ook mee om
+zijn werk te controleren. De app praat dan met de testdatabase, nooit met de echte
+gegevens. Werk je met een andere assistent, dan staat de route in
+`docs/routes/lokaal-kijken.md`, inclusief wat er op je computer geïnstalleerd moet zijn
+(git, Node, pnpm) en welke database je daarvoor gebruikt.
 
 Het is een hulpmiddel tijdens het bouwen, niet de manier om werk te laten zien of live
-te zetten: dat blijft de preview-link van het voorstel. Daarom start de app lokaal
-alleen met `STACK_ALLOW_DEV=1` ervoor; zonder die variabele weigert `pnpm dev`, en dat
-is geen storing.
+te zetten: dat blijft de preview-link van het voorstel. Daarom start de app buiten de
+Claude-app alleen met `STACK_ALLOW_DEV=1` ervoor; zonder die variabele weigert
+`pnpm dev`, en dat is geen storing.

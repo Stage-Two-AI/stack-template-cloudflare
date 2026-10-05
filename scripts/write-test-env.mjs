@@ -6,7 +6,8 @@ import { databaseModus, testDatabase } from "./lib/stack-config.mjs";
  * Schrijft .env.local zodat de app op je eigen computer met de TESTDATABASE praat:
  * hetzelfde Supabase-project als waar de Cloudflare-preview naar wijst, los van productie.
  * Dit is variant B uit docs/routes/lokaal-kijken.md; variant A (`pnpm env:local`)
- * gebruikt een lokale Supabase in Docker.
+ * gebruikt een lokale Supabase in Docker. De preview van de Claude-app
+ * (scripts/preview.mjs) roept dit script zelf aan als er nog geen .env.local is.
  *
  * Alleen de publieke anon key komt hierin terecht. Die is expres publiek en wordt
  * door RLS beschermd. Een service role key van de testdatabase bestaat voor deze
@@ -17,7 +18,9 @@ const modus = databaseModus();
 
 if (modus === "geen") {
   console.error("✗ Deze app heeft geen database (database: false in stack.config.json).");
-  console.error("  Er is dus niets in te stellen; `STACK_ALLOW_DEV=1 pnpm dev` werkt meteen.");
+  console.error(
+    "  Er is dus niets in te stellen; de preview (of `STACK_ALLOW_DEV=1 pnpm dev`) werkt meteen.",
+  );
   process.exit(1);
 }
 
@@ -50,32 +53,44 @@ if (existsSync(".env.local") && !process.argv.includes("--overschrijf")) {
 }
 
 /**
- * De anon key halen we op via de Supabase CLI. Dat vraagt een eenmalige
- * `pnpm exec supabase login` (opent de browser). Lukt dat niet, dan kan het ook met
- * de hand: de route beschrijft waar de sleutel in het dashboard staat.
+ * De anon key staat bij voorkeur in stack.config.json (`testdatabase.anon_key`): dan is
+ * er op deze computer geen login bij Supabase nodig, en zo hoort het (geen toegang tot
+ * Supabase op een werkcomputer). Staat hij er niet, dan proberen we de Supabase CLI; dat
+ * vraagt een eenmalige `pnpm exec supabase login`. Lukt ook dat niet, dan kan het met de
+ * hand: de route beschrijft waar de sleutel in het dashboard staat.
  */
-let anonKey = null;
-try {
-  const raw = execFileSync(
-    "pnpm",
-    ["exec", "supabase", "projects", "api-keys", "--project-ref", test.project_ref, "-o", "json"],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-  );
-  const sleutels = JSON.parse(raw);
-  const anon =
-    sleutels.find((k) => k.name === "anon") ??
-    sleutels.find((k) => typeof k.api_key === "string" && k.api_key.startsWith("sb_publishable_"));
-  anonKey = anon?.api_key ?? null;
-} catch {
-  anonKey = null;
+function anonKeyViaCli() {
+  try {
+    const raw = execFileSync(
+      "pnpm",
+      ["exec", "supabase", "projects", "api-keys", "--project-ref", test.project_ref, "-o", "json"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const sleutels = JSON.parse(raw);
+    const anon =
+      sleutels.find((k) => k.name === "anon") ??
+      sleutels.find(
+        (k) => typeof k.api_key === "string" && k.api_key.startsWith("sb_publishable_"),
+      );
+    return anon?.api_key ?? null;
+  } catch {
+    return null;
+  }
 }
+
+const anonKey = test.anon_key ?? anonKeyViaCli();
 
 const schema = modus === "gedeeld" ? "api" : "public";
 
 if (!anonKey) {
   console.error("✗ Kon de publieke sleutel van de testdatabase niet ophalen.");
   console.error("");
-  console.error("  Meestal: nog niet ingelogd bij Supabase op deze computer. Eén keer doen:");
+  console.error(
+    "  Het makkelijkst: vraag Stage Two de publieke sleutel in stack.config.json te zetten",
+  );
+  console.error(
+    "  (`testdatabase.anon_key`). Of: nog niet ingelogd bij Supabase op deze computer:",
+  );
   console.error("    pnpm exec supabase login");
   console.error("  en dan dit commando opnieuw.");
   console.error("");
@@ -105,4 +120,4 @@ writeFileSync(
 );
 
 console.log(`✓ .env.local geschreven: de app praat nu met de testdatabase (${test.project_ref})`);
-console.log("  Starten: STACK_ALLOW_DEV=1 pnpm dev");
+console.log("  Starten: de preview in de Claude-app, of `STACK_ALLOW_DEV=1 pnpm dev`");
