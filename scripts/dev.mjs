@@ -14,7 +14,8 @@ import { spawnSync } from "node:child_process";
  * Voor jezelf kijken mag wél, en dat is een andere situatie: je wilt tijdens het
  * bouwen zien wat je gemaakt hebt, niet iemand iets laten zien. Dat gaat expliciet,
  * met STACK_ALLOW_DEV=1 ervoor, zodat het nooit per ongeluk het resultaat wordt.
- * De route docs/routes/lokaal-kijken.md beschrijft wat je daarvoor nodig hebt.
+ * In de Claude-app hoeft dat niet: daar start de preview via .claude/launch.json
+ * (scripts/preview.mjs). De route docs/routes/lokaal-kijken.md beschrijft beide.
  */
 if (process.env.STACK_ALLOW_DEV !== "1") {
   console.error(
@@ -27,7 +28,8 @@ if (process.env.STACK_ALLOW_DEV !== "1") {
       "  Zie docs/WERKWIJZE.md, hoofdstuk 5, en de route docs/routes/verder-werken.md.",
       "",
       "  Wil je iets controleren zonder browser? Draai `pnpm test` of `pnpm test:e2e`.",
-      "  Wil je voor jezelf zien wat je gemaakt hebt? Dat mag, expliciet:",
+      "  Wil je voor jezelf zien wat je gemaakt hebt? In de Claude-app: de preview",
+      "  (die start vanzelf, via .claude/launch.json). Elders mag het expliciet:",
       "    STACK_ALLOW_DEV=1 pnpm dev",
       "  Volg dan de route docs/routes/lokaal-kijken.md (wat je nodig hebt, welke",
       "  database, en waarom dit nooit het opgeleverde resultaat is).",

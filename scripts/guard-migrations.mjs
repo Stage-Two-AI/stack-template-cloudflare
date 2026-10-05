@@ -43,7 +43,7 @@ if (!bezitDatabase()) {
       "Wat je wél doet:",
       "  - hoort de wijziging bij het schema? Doe hem in de repo die de database bezit.",
       "  - heeft deze app echt een eigen database nodig? Dan is dat een beslissing van",
-      "    Stage Two, niet een bestand erbij. Volg de route docs/routes/nieuwe-app-aanvragen.md.",
+      "    Stage Two, niet een bestand erbij. Vraag het Stage Two.",
       "",
       "Verwijder deze bestanden om de poort weer groen te krijgen.",
     ]);

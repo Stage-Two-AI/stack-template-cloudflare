@@ -37,9 +37,14 @@ misgaan:
 - Nieuwe tabel? Dan RLS aan én policies én een RLS-test. Volg dan de route
   `docs/routes/databasewijziging.md`.
 
-Wil je tussendoor zien wat je gemaakt hebt, in een browser op je eigen computer? Dat
-kan, langs `docs/routes/lokaal-kijken.md`. Het is een hulpmiddel tijdens het bouwen,
-niet de oplevering: die volgt hieronder.
+Raakt je wijziging de database (een tabel, kolom, index of policy)? Lees dan nu
+`docs/routes/databasewijziging.md` in zijn geheel en volg die stappen erbij. In Claude
+Code herinnert de plugin je eraan zodra je in `supabase/migrations/` schrijft.
+
+Wil je tussendoor zien wat je gemaakt hebt? In de Claude-app start de preview vanzelf
+(`.claude/launch.json`), tegen de testdatabase; gebruik die ook om je eigen werk te
+controleren. Met een andere assistent: `docs/routes/lokaal-kijken.md`. Het is een
+hulpmiddel tijdens het bouwen, niet de oplevering: die volgt hieronder.
 
 ## Stap 4: Schrijf de test erbij
 
@@ -107,7 +112,7 @@ meld dan wat er nog mist.
 | `guard:secrets` | er staat mogelijk een sleutel in de code of in de bundel. **Altijd zelf naar kijken**, dit is de gevaarlijkste |
 | `guard:rls` | er is een tabel zonder beveiliging |
 | `guard:migrations` | je migratie kan data vernietigen; lees de melding en bevestig bewust |
-| `guard:template` | je wijzigde een bestand van de gedeelde template. Draai het terug en meld het bij Stage Two; wil je de nieuwste versie van de template, dan is dat `/stack:bijwerken` |
+| `guard:template` | je wijzigde een bestand van de gedeelde template. Draai het terug en meld het bij Stage Two; wil je de nieuwste versie van de template, dan is dat `/stack-cloudflare:updaten` |
 | `guard:cloudflare` | `wrangler.jsonc` vraagt om opslag van Cloudflare (D1, R2, KV, Durable Objects), Worker-code of een sleutel die niet op de lijst staat. Gegevens horen in Supabase: haal de sleutel weg |
 | `db:types:check` | de gegenereerde types lopen achter. `pnpm db:types` en committen |
 

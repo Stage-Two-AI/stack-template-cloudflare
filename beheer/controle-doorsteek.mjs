@@ -3,7 +3,7 @@
  * Geautomatiseerde controles van de live doorsteek (U7 in het plan). Kijkt van buitenaf,
  * zonder cookie en zonder sleutels behalve de publieke anon-sleutel, of de deur dicht
  * zit. Elke controle geeft "geslaagd", "gezakt" of "overgeslagen", met het bewijs erbij
- * (status en doorverwijzing), zodat het rapport in docs/proef/doorsteek.md kan.
+ * (status en doorverwijzing), zodat het rapport in een draaiboek kan.
  *
  *   AE2  de app en de inlogroute van Supabase leveren zonder toegang niets op
  *   AE5  de preview vraagt om inloggen (dat de preview andere gegevens ziet, toont de

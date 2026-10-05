@@ -85,9 +85,12 @@ export function gedeeldeDatabase() {
  * als de app met een database praat. Optioneel: ontbreekt het blok, dan is er
  * geen testdatabase en gebruikt de preview wat er in de GitHub-omgeving `preview` staat.
  *
- *   "testdatabase": { "project_ref": "abcdefghijklmnopqrst" }
+ *   "testdatabase": { "project_ref": "abcdefghijklmnopqrst", "anon_key": "sb_publishable_..." }
  *
- * De project-ref is geen geheim (hij staat in de URL van elk verzoek). Het
+ * De project-ref is geen geheim (hij staat in de URL van elk verzoek), en de anon key
+ * (publishable key) evenmin: die zit al in de bundel van elke preview en wordt door RLS
+ * beschermd. Staat hij hier, dan kan de preview op de computer van de gebruiker zonder
+ * login bij Supabase met de testdatabase praten (`scripts/preview.mjs`). Het
  * databasewachtwoord van dit project is dat wél; dat staat als Actions-secret
  * SUPABASE_TEST_DB_PASSWORD en wordt alleen gebruikt om migraties er als eerste
  * op te draaien (de canary in deploy-db.yml).
@@ -103,5 +106,20 @@ export function testDatabase() {
         'Voorbeeld:\n  "testdatabase": { "project_ref": "abcdefghijklmnopqrst" }',
     );
   }
-  return { project_ref: config.project_ref, url: `https://${config.project_ref}.supabase.co` };
+  const anonKey = config.anon_key ?? null;
+  if (
+    anonKey !== null &&
+    !/^(?:sb_publishable_[\w-]{10,}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{5,})$/.test(anonKey)
+  ) {
+    throw new Error(
+      "stack.config.json: `testdatabase.anon_key` hoort de publieke sleutel van het testproject te zijn\n" +
+        "(sb_publishable_... of de anon-JWT). Een geheime sleutel (sb_secret_..., service_role) hoort\n" +
+        "hier nooit; die staat alleen als secret in GitHub.",
+    );
+  }
+  return {
+    project_ref: config.project_ref,
+    url: `https://${config.project_ref}.supabase.co`,
+    anon_key: anonKey,
+  };
 }

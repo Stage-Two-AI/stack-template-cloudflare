@@ -105,3 +105,23 @@ describe("guard:migrations bij een app die de database niet bezit", () => {
     expect(uitvoer).toMatch(/gedeeld/);
   });
 });
+
+describe("testDatabase met publieke sleutel", () => {
+  const ref = "abcdefghijklmnopqrst";
+
+  it("geeft de anon key mee als die in de config staat, en null als hij ontbreekt", () => {
+    config({
+      database: true,
+      testdatabase: { project_ref: ref, anon_key: "sb_publishable_abcdef123456" },
+    });
+    expect(vraag("m.testDatabase().anon_key")).toBe("sb_publishable_abcdef123456");
+    config({ database: true, testdatabase: { project_ref: ref } });
+    expect(vraag("m.testDatabase().anon_key")).toBe("null");
+  });
+
+  it("weigert een geheime sleutel in de config", () => {
+    const geheim = "sb_secret_abcdef123456"; // guard-secrets:allow (verzonnen, om de weigering te testen)
+    config({ database: true, testdatabase: { project_ref: ref, anon_key: geheim } });
+    expect(() => vraag("m.testDatabase()")).toThrow(/geheime sleutel/);
+  });
+});

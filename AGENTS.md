@@ -1,7 +1,7 @@
 # <projectnaam>
 
 <!-- Vervang <projectnaam> en de regel hieronder bij het opzetten van een project.
-     Alles boven de markering hoort bij dít project en wordt bij /stack:bijwerken
+     Alles boven de markering hoort bij dít project en wordt bij /stack-cloudflare:updaten
      nooit overschreven. -->
 
 <!-- Wat deze app doet, in één zin, vanuit de gebruiker geschreven. -->
@@ -13,7 +13,7 @@
 
 <!-- stack:begin -->
 <!-- Alles hieronder komt uit stack-template en wordt bijgewerkt met
-     /stack:bijwerken, als pull request. Wijzig het niet hier; meld het bij Stage Two. -->
+     /stack-cloudflare:updaten, als pull request. Wijzig het niet hier; meld het bij Stage Two. -->
 
 Dit bestand geldt voor **elke** agent die in deze repo werkt: Claude Code, Codex, Cursor,
 Copilot of een mens zonder agent. Er is geen tweede set afspraken ergens anders.
@@ -84,10 +84,13 @@ docs/solutions/        gedocumenteerde oplossingen van eerdere problemen (bugs, 
 
 ## Regels
 
-- **Previews gaan via de Cloudflare-preview van de PR.** Zet geen dev-server op localhost
-  op om werk te laten zien. `pnpm dev` weigert om die reden; het is geen storing.
-  Voor jezelf kijken tijdens het bouwen mag wél, expliciet met `STACK_ALLOW_DEV=1`
-  ervoor en nooit tegen productie: volg `docs/routes/lokaal-kijken.md`.
+- **Kijken mag lokaal, opleveren gaat via de Cloudflare-preview van de PR.** In de
+  Claude-app start de preview (`.claude/launch.json`, `scripts/preview.mjs`) de app op
+  de computer van de gebruiker, tegen de testdatabase en nooit tegen productie; gebruik
+  die om je werk te controleren en om de gebruiker te laten meekijken. Zet geen
+  dev-server in een terminal op, en geef nooit een `localhost`-adres als resultaat:
+  `pnpm dev` weigert om die reden, het is geen storing. Andere assistenten volgen
+  `docs/routes/lokaal-kijken.md`.
 - **Geen `any`, geen `@ts-ignore`, geen `as unknown as`, geen non-null `!`.** Los de
   echte typefout op. Een groene build met verstopte fouten is erger dan een rode.
 - **Databasetypes komen uit `pnpm db:types`**, nooit met de hand verzonnen. Klaagt
@@ -136,22 +139,25 @@ je begint en loop de stappen in volgorde af, in plaats van te improviseren:
 
 - `docs/routes/verder-werken.md`: iets toevoegen, wijzigen of repareren aan deze app.
   Dit is de route voor vrijwel elk verzoek, ook een kleinigheid.
-- `docs/routes/databasewijziging.md`: een tabel, kolom of policy erbij of anders
-- `docs/routes/nieuwe-app-aanvragen.md`: een compleet nieuwe applicatie beginnen (een
-  eigen repo, via `/stack:nieuwe-app`; niet vanuit deze map)
-- `docs/routes/lokaal-kijken.md`: de app op je eigen computer zien terwijl je bouwt,
-  inclusief wat daarvoor geïnstalleerd moet zijn en welke database je gebruikt
+- `docs/routes/databasewijziging.md`: een tabel, kolom of policy erbij of anders. Hoort
+  bij verder-werken: lees hem zodra een wijziging de database raakt.
+- `docs/routes/lokaal-kijken.md`: de app op je eigen computer zien terwijl je bouwt. In
+  de Claude-app gaat dat vanzelf via de preview; deze route is voor andere assistenten
+  en voor wie het met de hand doet.
 
-In Claude Code zijn dezelfde routes ook als skill beschikbaar via de Stage Two-plugin
-(`/stack:verder-werken` en zo verder); die skills verwijzen naar deze bestanden, er is
-maar één tekst. Diezelfde plugin heeft `/stack:bijwerken`: daarmee haalt de gebruiker
-een nieuwere versie van de gedeelde template op, als pull request van hemzelf.
+Een compleet nieuwe applicatie begin je niet vanuit deze map: die krijgt een eigen repo,
+via `/stack-cloudflare:nieuwe-app` in een lege map.
+
+In Claude Code geeft de Stage Two-plugin vier commando's: `/stack-cloudflare:installatie` (een
+nieuwe computer klaarzetten), `/stack-cloudflare:nieuwe-app`, `/stack-cloudflare:verder-werken` (verwijst naar
+de routes hierboven, er is maar één tekst) en `/stack-cloudflare:updaten` (plugin, computer en apps
+bijwerken, elke wijziging aan een app als pull request van de gebruiker zelf).
 
 ## Wat je niet aanpast
 
 `.github/workflows/`, `.claude/`, `scripts/`, `docs/WERKWIJZE.md`, `docs/routes/` en dit
 bestand onder de markering komen uit de gedeelde template en worden bijgewerkt met
-`/stack:bijwerken`, als pull request. De check `guard:template` laat een PR die eraan
+`/stack-cloudflare:updaten`, als pull request. De check `guard:template` laat een PR die eraan
 komt rood staan; in Claude Code houdt de hook van de Stage Two-plugin de wijziging al
 bij de toetsaanslag tegen. Klopt er iets niet, meld het dan bij Stage Two: dan krijgt
 elk project de verbetering, in plaats van dit project alleen.
