@@ -77,7 +77,19 @@ Wat de inrichting in de app-repo zet:
 |---|---|
 | omgevingen `production` en `preview`, variabelen | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INLOGDIENST`, `CLOUDFLARE_ACCOUNT_ID`, en `VITE_SENTRY_DSN` als de beheeromgeving die heeft |
 | repo-variabelen | `PREVIEW_VITE_SUPABASE_URL`, `PREVIEW_VITE_SUPABASE_ANON_KEY`, `PREVIEW_VITE_SUPABASE_SCHEMA` (`public`), `PREVIEW_VITE_INLOGDIENST`, en `PREVIEW_VITE_SENTRY_DSN` als de beheeromgeving `VITE_SENTRY_DSN` heeft |
-| omgeving `production`, secrets | `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD` |
+| omgeving `production`, secrets | `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, en met `--testdatabase` ook `SUPABASE_TEST_DB_PASSWORD` |
+
+**Testdatabase (`--testdatabase`).** Voor een app met een eigen database (`database: true`
+in `stack.config.json`) maakt de inrichting een tweede Supabase-project
+`<vv><app>-test`, met een eigen SaaS-app `<vv><app>-test-inlog` (dezelfde policies, dus
+dezelfde mensen), de custom provider en dezelfde auth-config. De `PREVIEW_`-variabelen
+wijzen dan naar dat project, zodat een preview nooit bij de productiegegevens kan. Het
+script geeft `testdatabase: { project_ref, anon_key }` terug; de workflow App inrichten
+in de beheer-repo opent daarmee een pull request die het blok `testdatabase` in
+`stack.config.json` zet. Na die merge zet `deploy-db.yml` de migraties eerst op de
+testdatabase (canary) en dan op productie. Let op: het gratis plan van Supabase staat
+twee actieve projecten per organisatie toe, dus één app met testdatabase. Toegang
+bijwerken trekt ook in de testdatabase in; opruimen haalt hem mee weg.
 
 De PR-job in `uitrollen.yml` noemt geen omgeving en leest daarom de `PREVIEW_`-
 repovariabelen (geen secrets, ze staan toch in de bundel). `PREVIEW_VITE_SENTRY_DSN` zet

@@ -58,6 +58,10 @@ export function appNamen(app, voorvoegsel) {
     inlog: `${vv}${app}-inlog`,
     worker: `${vv}${app}-worker`,
     project: `${vv}${app}`,
+    // De testdatabase: een tweede Supabase-project met een eigen inlog-app, zodat de
+    // previews nooit bij productie kunnen.
+    test: `${vv}${app}-test`,
+    testInlog: `${vv}${app}-test-inlog`,
   };
 }
 

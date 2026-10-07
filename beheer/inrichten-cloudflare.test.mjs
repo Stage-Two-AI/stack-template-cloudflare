@@ -80,7 +80,12 @@ test("argumenten: app verplicht, modi sluiten elkaar uit", () => {
     vangnet: false,
     tweedeDoorgang: false,
     toegang: false,
+    testdatabase: false,
   });
+  assert.equal(
+    leesArgumenten([...PROEF, "--app", "cf-proef", "--testdatabase"]).testdatabase,
+    true,
+  );
   assert.throws(() => leesArgumenten([...PROEF, "--droogloop"]), /--app/);
   assert.throws(() => leesArgumenten([...PROEF, "--app", "Cf_Proef"]), /kleine letters/);
   assert.throws(
@@ -1261,4 +1266,126 @@ test("verwijderWorker: true als hij er was, false bij 404, andere fouten gaan do
   });
   const cf2 = cloudflareClient({ fetchFn: kapot.fetchFn, token: "t", accountId: "acc" });
   await assert.rejects(() => cf2.verwijderWorker("rp-app"), /DELETE .* gaf 500/);
+});
+
+// ---------------------------------------------------------------- testdatabase
+
+const TEST_ARG = { ...ARG, testdatabase: true };
+
+test("testdatabase: eigen project en eigen SaaS-app, de previews wijzen erheen", async () => {
+  const w = nepWolk();
+  const r = await richtIn(TEST_ARG, opzet(w));
+  const [prod, testProj] = w.staat.projecten;
+  assert.equal(prod.name, "cf-proef-cf-proef");
+  assert.equal(testProj.name, "cf-proef-cf-proef-test");
+  const testInlog = w.staat.apps.find((a) => a.name === "cf-proef-cf-proef-test-inlog");
+  assert.ok(testInlog, "eigen SaaS-app voor de testdatabase");
+  assert.deepEqual(testInlog.saas_app.redirect_uris, [
+    `https://${testProj.ref}.supabase.co/auth/v1/callback`,
+  ]);
+  const prodInlog = w.staat.apps.find((a) => a.name === "cf-proef-cf-proef-inlog");
+  assert.deepEqual(
+    testInlog.policies.map((p) => p.id ?? p),
+    prodInlog.policies.map((p) => p.id ?? p),
+    "zelfde policies, dus zelfde mensen",
+  );
+  // Productie blijft op productie, de PR-previews gaan naar de testdatabase.
+  for (const env of ["production", "preview"]) {
+    assert.equal(w.staat.ghVariabelen[env].VITE_SUPABASE_URL, `https://${prod.ref}.supabase.co`);
+  }
+  assert.equal(
+    w.staat.ghVariabelen.repo.PREVIEW_VITE_SUPABASE_URL,
+    `https://${testProj.ref}.supabase.co`,
+  );
+  assert.equal(w.staat.ghVariabelen.repo.PREVIEW_VITE_SUPABASE_ANON_KEY, `anon-${testProj.ref}`);
+  assert.deepEqual(w.staat.ghSecrets.production.sort(), [
+    "SUPABASE_DB_PASSWORD",
+    "SUPABASE_PROJECT_REF",
+    "SUPABASE_TEST_DB_PASSWORD",
+  ]);
+  assert.deepEqual(r.testdatabase, { project_ref: testProj.ref, anon_key: `anon-${testProj.ref}` });
+  const provider = w.aanroepen.find(
+    (a) => a.soort === "admin" && /Provider$/.test(a.methode) && a.url.includes(testProj.ref),
+  );
+  assert.ok(provider, "provider ook in de testdatabase");
+  assert.ok(w.staat.auth[testProj.ref], "auth-config ook in de testdatabase");
+});
+
+test("testdatabase: een tweede run maakt niets dubbel aan", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(TEST_ARG, d);
+  const projecten = w.staat.projecten.length;
+  const apps = w.staat.apps.length;
+  const r = await richtIn(TEST_ARG, d);
+  assert.equal(w.staat.projecten.length, projecten);
+  assert.equal(w.staat.apps.length, apps);
+  assert.equal(r.waarschuwingen.filter((x) => /TEST_DB/.test(x)).length, 0);
+  assert.ok(
+    r.stappen
+      .filter((s) => s.stap.startsWith("T "))
+      .every((s) => /hergebruikt|ongewijzigd/.test(s.actie)),
+    JSON.stringify(r.stappen),
+  );
+});
+
+test("testdatabase: bestaand testproject zonder wachtwoord-secret geeft een waarschuwing", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(TEST_ARG, d);
+  w.staat.ghSecrets.production = w.staat.ghSecrets.production.filter(
+    (n) => n !== "SUPABASE_TEST_DB_PASSWORD",
+  );
+  const r = await richtIn(TEST_ARG, d);
+  assert.match(r.waarschuwingen.join(" "), /SUPABASE_TEST_DB_PASSWORD/);
+});
+
+test("testdatabase: droogloop plant hem en schrijft niets", async () => {
+  const w = nepWolk();
+  const r = await richtIn({ ...TEST_ARG, droogloop: true }, opzet(w));
+  assert.deepEqual(w.schrijfacties(), []);
+  assert.match(r.stappen.find((s) => s.stap === "T testdatabase").actie, /cf-proef-cf-proef-test/);
+});
+
+test("testdatabase: zonder --testdatabase blijft alles op één project", async () => {
+  const w = nepWolk();
+  const r = await richtIn(ARG, opzet(w));
+  assert.equal(w.staat.projecten.length, 1);
+  assert.equal(r.testdatabase, undefined);
+});
+
+test("testdatabase: een app <naam>-test in toegang.json laat het script stoppen", async () => {
+  const w = nepWolk();
+  const toegang = { ...TOEGANG, apps: { ...TOEGANG.apps, "cf-proef-test": ["stagetwo"] } };
+  await assert.rejects(() => richtIn(TEST_ARG, opzet(w, { toegang })), /cf-proef-test/);
+  assert.deepEqual(w.schrijfacties(), []);
+});
+
+test("testdatabase: opruimen haalt het testproject, de test-SaaS-app en het secret weg", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(TEST_ARG, d);
+  const r = await ruimOp(ARG, d);
+  assert.deepEqual(w.staat.projecten, []);
+  assert.ok(!w.staat.apps.some((a) => a.name.endsWith("-test-inlog")));
+  assert.ok(!(w.staat.ghSecrets.production ?? []).includes("SUPABASE_TEST_DB_PASSWORD"));
+  assert.ok(r.verwijderd.some((x) => x.naam.startsWith("cf-proef-cf-proef-test")));
+});
+
+test("testdatabase: toegang bijwerken trekt ook in de testdatabase in", async () => {
+  const w = nepWolk({
+    gebruikers: [{ id: "22222222-2222-4222-8222-222222222222", email: "oud@elders.nl" }],
+  });
+  const d = opzet(w);
+  await richtIn(TEST_ARG, d);
+  w.aanroepen.length = 0;
+  const r = await werkToegangBij({ voorvoegsel: "cf-proef-" }, d);
+  assert.deepEqual(r.ingetrokken["cf-proef"], ["oud@elders.nl"]);
+  // De nep-wolk deelt de gebruikers tussen projecten; daarom hier alleen: de
+  // testdatabase wordt ook nagelopen.
+  const testRef = w.staat.projecten[1].ref;
+  assert.ok(
+    w.aanroepen.some((a) => a.methode === "listUsers" && a.url.includes(testRef)),
+    "gebruikers van de testdatabase nagelopen",
+  );
 });
