@@ -195,6 +195,7 @@ export function nepWolk({
         return antwoord(200, [
           { name: "anon", type: "legacy", api_key: `anon-${m[1]}` },
           { name: "service_role", type: "legacy", api_key: `geheim-sr-${m[1]}` },
+          { name: "default", type: "publishable", api_key: `sb_publishable_${m[1]}` },
         ]);
       }
       if (pas(/^\/projects\/([^/]+)\/config\/database\/pooler$/) && methode === "GET") {
