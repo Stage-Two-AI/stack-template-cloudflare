@@ -594,7 +594,8 @@ async function stapTestdatabase(arg, d, v, { policyIds, gewenstAuth, maskeer, st
       "de testdatabase bestond al, maar SUPABASE_TEST_DB_PASSWORD ontbreekt in omgeving production; zonder dat secret slaat deploy-db.yml de canary over",
     );
   }
-  return { ref: project.ref, anon: sleutels.anon };
+  // Voor stack.config.json (in git) de publishable key: de anon-JWT valt over guard:secrets.
+  return { ref: project.ref, anon: sleutels.anon, inGit: sleutels.publishable ?? sleutels.anon };
 }
 
 /**
@@ -685,7 +686,7 @@ export async function richtIn(arg, d) {
   const test = arg.testdatabase
     ? await stapTestdatabase(arg, d, v, { policyIds, gewenstAuth, maskeer, stap, resultaat })
     : null;
-  if (test) resultaat.testdatabase = { project_ref: test.ref, anon_key: test.anon };
+  if (test) resultaat.testdatabase = { project_ref: test.ref, anon_key: test.inGit };
 
   // 3.5 de deur; in de tijdelijke stand is er geen hostname en is stap 4 de deur
   let deur = v.deur;

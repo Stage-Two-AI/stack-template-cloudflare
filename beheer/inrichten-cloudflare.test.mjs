@@ -1303,7 +1303,11 @@ test("testdatabase: eigen project en eigen SaaS-app, de previews wijzen erheen",
     "SUPABASE_PROJECT_REF",
     "SUPABASE_TEST_DB_PASSWORD",
   ]);
-  assert.deepEqual(r.testdatabase, { project_ref: testProj.ref, anon_key: `anon-${testProj.ref}` });
+  // In stack.config.json (git) de publishable key: de anon-JWT valt over guard:secrets.
+  assert.deepEqual(r.testdatabase, {
+    project_ref: testProj.ref,
+    anon_key: `sb_publishable_${testProj.ref}`,
+  });
   const provider = w.aanroepen.find(
     (a) => a.soort === "admin" && /Provider$/.test(a.methode) && a.url.includes(testProj.ref),
   );
