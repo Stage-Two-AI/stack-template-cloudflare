@@ -145,6 +145,9 @@ export function supabaseBeheer({ fetchFn = fetch, token, orgSlug, slaap = wacht 
       const primair = lijst.find((p) => p.database_type === "PRIMARY") ?? lijst[0];
       return typeof primair?.db_host === "string" && primair.db_host ? primair.db_host : null;
     },
+    /** Een nieuw databasewachtwoord; het oude werkt daarna niet meer. */
+    zetDatabaseWachtwoord: (ref, wachtwoord) =>
+      s(`/projects/${ref}/database/password`, { methode: "PATCH", body: { password: wachtwoord } }),
     authConfig: (ref) => s(`/projects/${ref}/config/auth`),
     werkAuthBij: (ref, velden) =>
       s(`/projects/${ref}/config/auth`, { methode: "PATCH", body: velden }),

@@ -212,6 +212,11 @@ export function nepWolk({
           return antwoord(200, staat.auth[m[1]]);
         }
       }
+      if (pas(/^\/projects\/([^/]+)\/database\/password$/) && methode === "PATCH") {
+        if (!staat.projecten.some((p) => p.ref === m[1]))
+          return antwoord(404, { message: "project bestaat niet" });
+        return antwoord(200, { message: "ok" });
+      }
       if (pas(/^\/projects\/([^/]+)\/database\/query$/) && methode === "POST") {
         staat.sql.push(body.query);
         return antwoord(201, []);
