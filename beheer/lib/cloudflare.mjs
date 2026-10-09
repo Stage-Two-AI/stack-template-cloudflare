@@ -222,6 +222,29 @@ export function policyIdsVanApp(app) {
 }
 
 /**
+ * Wat er bij een bestaande app anders is dan gewenst: "policies" en/of "inlogmethoden"
+ * (allowed_idps en auto_redirect_to_identity). Leeg betekent niets bijwerken.
+ */
+export function afwijkingen(app, policyIds, idps) {
+  const uit = [];
+  if (JSON.stringify(policyIdsVanApp(app)) !== JSON.stringify(policyIds)) uit.push("policies");
+  const gewenst = inlogmethoden(idps);
+  const huidig = [...(app?.allowed_idps ?? [])].sort();
+  if (
+    JSON.stringify(huidig) !== JSON.stringify([...gewenst.allowed_idps].sort()) ||
+    Boolean(app?.auto_redirect_to_identity) !== gewenst.auto_redirect_to_identity
+  ) {
+    uit.push("inlogmethoden");
+  }
+  return uit;
+}
+
+/** De body voor een bestaande app met de gewenste policies én inlogmethoden. */
+export function metGewenst(app, policyIds, idps) {
+  return { ...metPolicies(app, policyIds), ...inlogmethoden(idps) };
+}
+
+/**
  * De placeholder-Worker: geeft op elk verzoek 503 "Deze app wordt ingericht." Hij staat
  * er alleen tussen de inrichting en de eerste echte uitrol, zodat de Access op de Worker
  * al bestaat voordat er iets van de app op workers.dev staat. `wrangler deploy`

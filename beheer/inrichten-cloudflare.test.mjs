@@ -1333,15 +1333,67 @@ test("testdatabase: een tweede run maakt niets dubbel aan", async () => {
   );
 });
 
-test("testdatabase: bestaand testproject zonder wachtwoord-secret geeft een waarschuwing", async () => {
+test("testdatabase: bestaand testproject zonder wachtwoord-secret krijgt een nieuw wachtwoord, productie niet", async () => {
   const w = nepWolk();
   const d = opzet(w);
   await richtIn(TEST_ARG, d);
+  const testProj = w.staat.projecten.find((p) => p.name.endsWith("-test"));
   w.staat.ghSecrets.production = w.staat.ghSecrets.production.filter(
     (n) => n !== "SUPABASE_TEST_DB_PASSWORD",
   );
+  w.aanroepen.length = 0;
   const r = await richtIn(TEST_ARG, d);
-  assert.match(r.waarschuwingen.join(" "), /SUPABASE_TEST_DB_PASSWORD/);
+  const resets = w.aanroepen.filter(
+    (a) => a.methode === "PATCH" && a.pad?.endsWith("/database/password"),
+  );
+  assert.equal(resets.length, 1, "alleen de testdatabase");
+  assert.ok(resets[0].pad.includes(testProj.ref));
+  assert.deepEqual(resets[0].body, { password: WACHTWOORD });
+  assert.ok(w.staat.ghSecrets.production.includes("SUPABASE_TEST_DB_PASSWORD"));
+  assert.ok(d.geheimen.includes(WACHTWOORD), "het nieuwe wachtwoord is gemaskeerd");
+  assert.equal(r.waarschuwingen.filter((x) => /TEST_DB/.test(x)).length, 0);
+  assert.match(r.stappen.find((s) => s.stap === "T testdatabase: wachtwoord").actie, /nieuw gezet/);
+});
+
+test("testdatabase: staat het wachtwoord-secret er, dan blijft het wachtwoord ongemoeid", async () => {
+  const w = nepWolk();
+  const d = opzet(w);
+  await richtIn(TEST_ARG, d);
+  w.aanroepen.length = 0;
+  await richtIn(TEST_ARG, d);
+  assert.ok(!w.aanroepen.some((a) => a.pad?.endsWith("/database/password")));
+});
+
+test("gewijzigde inlogmethoden: een volgende run zet allowed_idps en auto_redirect op elke Access-app gelijk, policies blijven", async () => {
+  const w = nepWolk({ workerBestaat: true });
+  await richtIn(TEST_ARG, opzet(w));
+  const voor = Object.fromEntries(w.staat.apps.map((a) => [a.name, a.policies]));
+  assert.ok(w.staat.apps.every((a) => a.auto_redirect_to_identity === true));
+
+  const r = await richtIn(TEST_ARG, opzet(w, { idps: ["idp-otp", "idp-entra"] }));
+  assert.ok(w.staat.apps.length >= 3, JSON.stringify(w.staat.apps.map((a) => a.name)));
+  for (const app of w.staat.apps) {
+    assert.deepEqual(app.allowed_idps, ["idp-otp", "idp-entra"], app.name);
+    assert.equal(app.auto_redirect_to_identity, false, app.name);
+    assert.deepEqual(app.policies, voor[app.name], `${app.name}: policies ongewijzigd`);
+    if (app.saas_app) assert.ok(app.saas_app.client_id, `${app.name}: client_id blijft`);
+  }
+  assert.ok(
+    r.stappen.some((s) => /inlogmethoden bijgewerkt/.test(s.actie)),
+    JSON.stringify(r.stappen),
+  );
+
+  await richtIn(TEST_ARG, opzet(w, { idps: ["idp-entra"] }));
+  for (const app of w.staat.apps) {
+    assert.deepEqual(app.allowed_idps, ["idp-entra"], app.name);
+    assert.equal(app.auto_redirect_to_identity, true, app.name);
+  }
+
+  // Zelfde lijst in een andere volgorde: niets te doen.
+  await richtIn(TEST_ARG, opzet(w, { idps: ["idp-otp", "idp-entra"] }));
+  w.aanroepen.length = 0;
+  await richtIn(TEST_ARG, opzet(w, { idps: ["idp-entra", "idp-otp"] }));
+  assert.ok(!w.aanroepen.some((a) => a.methode === "PUT" && /\/access\/apps\//.test(a.pad ?? "")));
 });
 
 test("testdatabase: droogloop plant hem en schrijft niets", async () => {

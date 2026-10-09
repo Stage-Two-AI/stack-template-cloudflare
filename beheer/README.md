@@ -60,7 +60,7 @@ Verder in omgeving `proef-beheer`, als variabelen (geen secrets):
 |---|---|
 | `CLOUDFLARE_ACCOUNT_ID` | het account-id |
 | `CLOUDFLARE_TEAM_DOMAIN` | de teamnaam uit P1, bijvoorbeeld `stagetwo` of `stagetwo.cloudflareaccess.com` |
-| `CLOUDFLARE_IDP_IDS` | optioneel: id's van de toegestane inlogmethoden, met komma's. Leeg = alleen one-time PIN |
+| `CLOUDFLARE_IDP_IDS` | optioneel: id's van de toegestane inlogmethoden, met komma's. Leeg = alleen one-time PIN. Een gewijzigde lijst zet een volgende run ook op bestaande Access-apps (met één methode meteen doorsturen) |
 | `CLOUDFLARE_GROEPEN_IDP` | optioneel: `azureAD:<id>` als een groep `idp_groepen` gebruikt |
 | `VITE_SENTRY_DSN` | optioneel: zet hier de DSN van het Sentry-project om Sentry in de app aan te zetten; de inrichting zet hem dan als `VITE_SENTRY_DSN` in `production` en `preview` en als `PREVIEW_VITE_SENTRY_DSN` op de repo. Leeg = Sentry uit |
 
@@ -77,7 +77,7 @@ Wat de inrichting in de app-repo zet:
 |---|---|
 | omgevingen `production` en `preview`, variabelen | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INLOGDIENST`, `CLOUDFLARE_ACCOUNT_ID`, en `VITE_SENTRY_DSN` als de beheeromgeving die heeft |
 | repo-variabelen | `PREVIEW_VITE_SUPABASE_URL`, `PREVIEW_VITE_SUPABASE_ANON_KEY`, `PREVIEW_VITE_SUPABASE_SCHEMA` (`public`), `PREVIEW_VITE_INLOGDIENST`, en `PREVIEW_VITE_SENTRY_DSN` als de beheeromgeving `VITE_SENTRY_DSN` heeft |
-| omgeving `production`, secrets | `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, en met `--testdatabase` ook `SUPABASE_TEST_DB_PASSWORD` |
+| omgeving `production`, secrets | `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, en met `--testdatabase` ook `SUPABASE_TEST_DB_PASSWORD` (ontbreekt dat bij een bestaande testdatabase, dan zet een volgende run een nieuw testwachtwoord; productie nooit) |
 
 **Testdatabase (`--testdatabase`).** Voor een app met een eigen database (`database: true`
 in `stack.config.json`) maakt de inrichting een tweede Supabase-project

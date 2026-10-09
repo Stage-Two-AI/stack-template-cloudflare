@@ -54,14 +54,14 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { cloudflareConfig } from "../scripts/lib/cloudflare-config.mjs";
 import {
+  afwijkingen,
   appNamen,
   cloudflareClient,
   deurApp,
   inlogApp,
   issuerVoor,
-  metPolicies,
+  metGewenst,
   PROEF_VOORVOEGSEL,
-  policyIdsVanApp,
   valideerVoorvoegsel,
   wachtOpDiscovery,
   workerApp,
@@ -437,11 +437,10 @@ async function stapWorker(arg, d, v, policyIds) {
     };
   }
   const voor = placeholder ? "placeholder neergezet, Access " : "";
-  if (JSON.stringify(policyIdsVanApp(v.workerAccess)) === JSON.stringify(policyIds)) {
-    return { stap, actie: `${voor}ongewijzigd`, id: v.workerAccess.id };
-  }
-  await d.cf.werkAppBij(v.workerAccess.id, metPolicies(v.workerAccess, policyIds));
-  return { stap, actie: `${voor}policies bijgewerkt`, id: v.workerAccess.id };
+  const anders = afwijkingen(v.workerAccess, policyIds, v.idps);
+  if (!anders.length) return { stap, actie: `${voor}ongewijzigd`, id: v.workerAccess.id };
+  await d.cf.werkAppBij(v.workerAccess.id, metGewenst(v.workerAccess, policyIds, v.idps));
+  return { stap, actie: `${voor}${anders.join(" en ")} bijgewerkt`, id: v.workerAccess.id };
 }
 
 // ---------------------------------------------------------------- de inrichting
@@ -510,12 +509,13 @@ async function stapInlogApp(d, { bestaand, naam, ref, policyIds, idps, maskeer }
     maskeer(clientSecret);
     return { inlog, clientSecret, actie: `aangemaakt (${inlog.id})` };
   }
-  if (JSON.stringify(policyIdsVanApp(bestaand)) !== JSON.stringify(policyIds)) {
-    await d.cf.werkAppBij(bestaand.id, metPolicies(bestaand, policyIds));
+  const anders = afwijkingen(bestaand, policyIds, idps);
+  if (anders.length) {
+    await d.cf.werkAppBij(bestaand.id, metGewenst(bestaand, policyIds, idps));
     return {
       inlog: bestaand,
       clientSecret: null,
-      actie: `hergebruikt, policies bijgewerkt (${bestaand.id})`,
+      actie: `hergebruikt, ${anders.join(" en ")} bijgewerkt (${bestaand.id})`,
     };
   }
   return { inlog: bestaand, clientSecret: null, actie: `hergebruikt (${bestaand.id})` };
@@ -553,7 +553,7 @@ async function koppelInlog(d, v, { ref, serviceRole, saas, naam, gewenstAuth }) 
  * migraties zet deploy-db.yml erop zodra `testdatabase` in stack.config.json staat
  * (App inrichten opent daarvoor een pull request op de app-repo).
  */
-async function stapTestdatabase(arg, d, v, { policyIds, gewenstAuth, maskeer, stap, resultaat }) {
+async function stapTestdatabase(arg, d, v, { policyIds, gewenstAuth, maskeer, stap }) {
   let project = v.testProject;
   if (project) stap("T testdatabase: project", `hergebruikt (${project.ref})`);
   else {
@@ -590,8 +590,18 @@ async function stapTestdatabase(arg, d, v, { policyIds, gewenstAuth, maskeer, st
     v.testProject &&
     !(await leesGhSecretNamen(d, SECRET_OMGEVING, arg.repo)).includes("SUPABASE_TEST_DB_PASSWORD")
   ) {
-    resultaat.waarschuwingen.push(
-      "de testdatabase bestond al, maar SUPABASE_TEST_DB_PASSWORD ontbreekt in omgeving production; zonder dat secret slaat deploy-db.yml de canary over",
+    // Het oude wachtwoord is niet op te vragen. Voor de testdatabase mag een nieuw: er
+    // staan alleen testgegevens in, en zonder dit secret slaat deploy-db.yml de canary
+    // over en gaan migraties meteen naar productie. Productie krijgt dit nooit.
+    const wachtwoord = (d.wachtwoord ?? nieuwWachtwoord)();
+    maskeer(wachtwoord);
+    await d.supabase.zetDatabaseWachtwoord(project.ref, wachtwoord);
+    await zetGithub(d, arg.repo, {
+      secrets: { SUPABASE_TEST_DB_PASSWORD: { waarde: wachtwoord, altijd: true } },
+    });
+    stap(
+      "T testdatabase: wachtwoord",
+      "ontbrak in de app-repo: nieuw gezet in Supabase en als secret",
     );
   }
   // Voor stack.config.json (in git) de publishable key: de anon-JWT valt over guard:secrets.
@@ -684,7 +694,7 @@ export async function richtIn(arg, d) {
 
   // T de testdatabase, waar de previews naartoe gaan
   const test = arg.testdatabase
-    ? await stapTestdatabase(arg, d, v, { policyIds, gewenstAuth, maskeer, stap, resultaat })
+    ? await stapTestdatabase(arg, d, v, { policyIds, gewenstAuth, maskeer, stap })
     : null;
   if (test) resultaat.testdatabase = { project_ref: test.ref, anon_key: test.inGit };
 
@@ -696,9 +706,13 @@ export async function richtIn(arg, d) {
       deurApp({ naam: v.namen.deur, hostname: v.hostname, policyIds, idps: v.idps }),
     );
     stap("3.5 Access-app op de hostname", `aangemaakt (${deur.id})`);
-  } else if (JSON.stringify(policyIdsVanApp(deur)) !== JSON.stringify(policyIds)) {
-    await cf.werkAppBij(deur.id, metPolicies(deur, policyIds));
-    stap("3.5 Access-app op de hostname", `hergebruikt, policies bijgewerkt (${deur.id})`);
+  } else if (afwijkingen(deur, policyIds, v.idps).length) {
+    const anders = afwijkingen(deur, policyIds, v.idps);
+    await cf.werkAppBij(deur.id, metGewenst(deur, policyIds, v.idps));
+    stap(
+      "3.5 Access-app op de hostname",
+      `hergebruikt, ${anders.join(" en ")} bijgewerkt (${deur.id})`,
+    );
   } else stap("3.5 Access-app op de hostname", `hergebruikt (${deur.id})`);
 
   // 4 Access op de Worker, vóór 3.6: pas met de GitHub-variabelen kan er uitgerold
